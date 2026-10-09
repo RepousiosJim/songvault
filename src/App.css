@@ -9,6 +9,7 @@
   --muted: #8f8f9b;
   --accent: #7b93ff;
   --danger: #ff7b7b;
+  --ok: #5fd68a;
   font-family: system-ui, "Segoe UI", sans-serif;
   font-size: 14px;
   color: var(--text);
@@ -356,6 +357,22 @@ button.icon.on {
   padding: 5px 10px;
 }
 
+.chips {
+  display: flex;
+  gap: 6px;
+  padding: 0 20px 10px;
+}
+
+.chips .chip {
+  padding: 4px 14px;
+  font-size: 13px;
+}
+
+.chip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .search-empty {
   display: flex;
   flex-direction: column;
@@ -387,7 +404,7 @@ button.icon.on {
 
 .song {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) 44px 76px;
+  grid-template-columns: 72px minmax(0, 1fr) 44px 96px;
   align-items: center;
   gap: 14px;
   padding: 6px 12px;
@@ -460,6 +477,29 @@ button.icon.on {
   color: var(--muted);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.in-library {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ok);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.row-progress {
+  height: 3px;
+  margin-top: 3px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.row-progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
 }
 
 .menu {
@@ -541,7 +581,7 @@ button.icon.on {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: #5fd68a;
+  color: var(--ok);
   font-size: 12px;
   font-weight: 600;
 }

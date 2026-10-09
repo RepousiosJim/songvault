@@ -11,6 +11,7 @@ import {
   IconPlaylist,
   IconPlaylistAdd,
   IconPlus,
+  IconRefresh,
   IconSearch,
   IconSettings,
   IconTrash,
@@ -29,6 +30,7 @@ const SETTINGS = "settings";
 const watchUrl = (id: string) => `https://www.youtube.com/watch?v=${id}`;
 const thumbnailUrl = (id: string) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
 const isLink = (text: string) => /^https?:\/\/|youtu\.?be/i.test(text);
+const isSong = (r: SearchResult) => r.duration > 0 && r.duration < 600;
 
 function totalLength(songs: Song[]) {
   const mins = Math.round(songs.reduce((sum, s) => sum + s.duration, 0) / 60);
@@ -68,6 +70,7 @@ function App() {
   const [field, setField] = useState("");
   const [searchedFor, setSearchedFor] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [songsOnly, setSongsOnly] = useState(true);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -182,6 +185,7 @@ function App() {
   const playing = queue[queueIndex];
   const activeJobs = jobs.filter((j) => !j.error);
   const failedJobs = jobs.filter((j) => j.error);
+  const shownResults = songsOnly ? results.filter(isSong) : results;
 
   function startDownload(target: string) {
     const id = crypto.randomUUID();
@@ -569,7 +573,10 @@ function App() {
                 {view === SEARCH
                   ? searching
                     ? "Searching…"
-                    : results.length > 0 && `${results.length} results`
+                    : results.length > 0 &&
+                      (shownResults.length < results.length
+                        ? `${shownResults.length} songs · ${results.length - shownResults.length} hidden`
+                        : `${results.length} results`)
                   : `${visible.length} ${visible.length === 1 ? "song" : "songs"} · ${totalLength(visible)}`}
               </span>
               {view === LIBRARY && (
@@ -581,6 +588,16 @@ function App() {
                 />
               )}
             </div>
+            {view === SEARCH && results.length > 0 && (
+              <div className="chips">
+                <button className={songsOnly ? "chip on" : "chip"} onClick={() => setSongsOnly(true)}>
+                  Songs
+                </button>
+                <button className={songsOnly ? "chip" : "chip on"} onClick={() => setSongsOnly(false)}>
+                  Everything
+                </button>
+              </div>
+            )}
             {view === SEARCH && searchError && <div className="error">{searchError}</div>}
             {view === SEARCH && !searchedFor && (
               <button className="search-empty" onClick={() => fieldRef.current?.focus()}>
@@ -590,9 +607,10 @@ function App() {
             )}
             <ul className="songs">
               {view === SEARCH
-                ? results.map((r) => {
+                ? shownResults.map((r) => {
                     const inLibrary = songs.some((s) => s.id === r.id);
-                    const downloading = activeJobs.some((j) => j.url === watchUrl(r.id));
+                    const active = activeJobs.find((j) => j.url === watchUrl(r.id));
+                    const failed = failedJobs.find((j) => j.url === watchUrl(r.id));
                     return (
                       <li
                         key={r.id}
@@ -603,13 +621,31 @@ function App() {
                         <span className="meta">
                           <span className="title">{r.title}</span>
                           <span className="channel">{r.channel}</span>
+                          {active && (
+                            <span className="row-progress">
+                              <span style={{ width: `${active.percent}%` }} />
+                            </span>
+                          )}
                         </span>
                         <span className="duration">{r.duration ? formatDuration(r.duration) : ""}</span>
                         <span className="actions always" onClick={(e) => e.stopPropagation()}>
                           {inLibrary ? (
-                            <span className="tag">In library</span>
-                          ) : downloading ? (
-                            <span className="tag">Downloading</span>
+                            <span className="in-library">
+                              <IconCircleCheckFilled size={16} /> In library
+                            </span>
+                          ) : active ? (
+                            <span className="tag">{Math.round(active.percent)}%</span>
+                          ) : failed ? (
+                            <button
+                              className="icon"
+                              aria-label="Retry"
+                              onClick={() => {
+                                setJobs((js) => js.filter((j) => j.id !== failed.id));
+                                startDownload(watchUrl(r.id));
+                              }}
+                            >
+                              <IconRefresh size={18} />
+                            </button>
                           ) : (
                             <button className="icon" aria-label="Download" onClick={() => startDownload(watchUrl(r.id))}>
                               <IconDownload size={18} />
