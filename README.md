@@ -2,6 +2,10 @@
 
 A Windows desktop app that downloads songs from YouTube with [yt-dlp](https://github.com/yt-dlp/yt-dlp) and keeps them in a local library with playlists.
 
+| Search | Settings |
+| --- | --- |
+| ![Search](docs/search.png) | ![Settings](docs/settings.png) |
+
 ## Features
 
 - Paste a YouTube link to download it as MP4, or as M4A audio only.
