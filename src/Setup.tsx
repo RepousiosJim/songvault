@@ -6,6 +6,7 @@ import { IconDownload } from "@tabler/icons-react";
 const TOOLS = [
   { name: "yt-dlp", size: "17 MB" },
   { name: "ffmpeg", size: "89 MB" },
+  { name: "deno", size: "43 MB" },
 ];
 
 export function Setup({ onReady }: { onReady: () => void }) {

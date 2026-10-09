@@ -18,7 +18,7 @@ A Windows desktop app that downloads songs from YouTube with [yt-dlp](https://gi
 
 ## Requirements
 
-Windows 10 or 11. On first launch songvault downloads [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [ffmpeg](https://github.com/yt-dlp/FFmpeg-Builds) (about 110 MB) into `%LOCALAPPDATA%\com.gemelon.songvault\bin`. Nothing else needs installing.
+Windows 10 or 11. On first launch songvault downloads [yt-dlp](https://github.com/yt-dlp/yt-dlp), [ffmpeg](https://github.com/yt-dlp/FFmpeg-Builds) and [Deno](https://deno.com) (about 150 MB in total) into `%LOCALAPPDATA%\com.gemelon.songvault\bin`. Nothing else needs installing.
 
 ## Install
 
