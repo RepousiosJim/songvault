@@ -88,12 +88,57 @@ pub fn stream_url(id: &str) -> Result<String, String> {
         .ok_or_else(|| last_error(&String::from_utf8_lossy(&output.stderr)))
 }
 
-pub fn parse_progress(line: &str) -> Option<f32> {
-    line.strip_prefix("SVPROG ")?
-        .trim()
-        .trim_end_matches('%')
-        .parse()
-        .ok()
+/// Stream count and expected total bytes, from the `SVFMT <format_id> <filesize>` line.
+pub fn parse_formats(line: &str) -> Option<(u32, Option<u64>)> {
+    let mut parts = line.strip_prefix("SVFMT ")?.split_whitespace();
+    let streams = parts.next()?.matches('+').count() as u32 + 1;
+    Some((streams, parts.next().and_then(|t| t.parse().ok())))
+}
+
+/// Downloaded and total bytes of the current stream, from `SVPROG <downloaded> <total> <estimate>`.
+pub fn parse_progress(line: &str) -> Option<(u64, Option<u64>)> {
+    let mut parts = line.strip_prefix("SVPROG ")?.split_whitespace();
+    let downloaded = parts.next()?.parse().ok()?;
+    let total = parts.take(2).find_map(|t| t.parse().ok());
+    Some((downloaded, total))
+}
+
+/// yt-dlp reports each stream (video, then audio) from 0 to 100%; this folds them into one bar.
+pub struct Progress {
+    streams: u32,
+    expected: Option<u64>,
+    finished: u64,
+    index: u32,
+    bytes: u64,
+    total: Option<u64>,
+    percent: f64,
+}
+
+impl Progress {
+    pub fn new() -> Self {
+        Progress { streams: 1, expected: None, finished: 0, index: 0, bytes: 0, total: None, percent: 0.0 }
+    }
+
+    pub fn set_formats(&mut self, streams: u32, expected: Option<u64>) {
+        self.streams = streams;
+        self.expected = expected;
+    }
+
+    pub fn update(&mut self, bytes: u64, total: Option<u64>) -> f32 {
+        if bytes < self.bytes {
+            self.finished += self.total.unwrap_or(self.bytes);
+            self.index += 1;
+        }
+        self.bytes = bytes;
+        self.total = total;
+        let fraction = match (self.expected, total) {
+            (Some(expected), _) => (self.finished + bytes) as f64 / expected as f64,
+            (None, Some(total)) => (self.index as f64 + bytes as f64 / total as f64) / self.streams as f64,
+            (None, None) => self.index as f64 / self.streams as f64,
+        };
+        self.percent = self.percent.max((fraction * 100.0).clamp(0.0, 100.0));
+        self.percent as f32
+    }
 }
 
 pub fn parse_song(line: &str, added_at: u64) -> Option<Song> {
@@ -166,7 +211,7 @@ pub fn download_args(settings: &Settings, url: &str) -> Vec<String> {
             "--newline",
             "--progress",
             "--progress-template",
-            "download:SVPROG %(progress._percent_str)s",
+            "download:SVPROG %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s",
             "-P",
         ]
         .map(String::from),
@@ -176,6 +221,8 @@ pub fn download_args(settings: &Settings, url: &str) -> Vec<String> {
         [
             "-o",
             "%(id)s.%(ext)s",
+            "--print",
+            "before_dl:SVFMT %(format_id)s %(filesize,filesize_approx)s",
             "--print",
             "after_move:SVJSON %(.{id,title,channel,uploader,duration,thumbnail,filepath})j",
         ]
@@ -208,11 +255,14 @@ pub fn run(
     });
 
     let mut song = None;
+    let mut progress = Progress::new();
     for line in BufReader::new(child.stdout.take().unwrap()).split(b'\n').map_while(Result::ok) {
         let line = String::from_utf8_lossy(&line);
         let line = line.trim();
-        if let Some(percent) = parse_progress(line) {
-            on_progress(percent);
+        if let Some((streams, expected)) = parse_formats(line) {
+            progress.set_formats(streams, expected);
+        } else if let Some((bytes, total)) = parse_progress(line) {
+            on_progress(progress.update(bytes, total));
         } else if let Some(parsed) = parse_song(line, added_at) {
             song = Some(parsed);
         }
@@ -240,7 +290,8 @@ mod tests {
     fn tail(quality: Quality, audio_only: bool) -> Vec<String> {
         let args = download_args(&settings(quality, audio_only), "URL");
         let p = args.iter().position(|a| a == "--no-playlist").unwrap();
-        assert_eq!(args[p..p + 7], ["--no-playlist", "--newline", "--progress", "--progress-template", "download:SVPROG %(progress._percent_str)s", "-P", r"D:\lib"]);
+        assert_eq!(args[p..p + 7], ["--no-playlist", "--newline", "--progress", "--progress-template", "download:SVPROG %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s", "-P", r"D:\lib"]);
+        assert!(args.contains(&"before_dl:SVFMT %(format_id)s %(filesize,filesize_approx)s".to_string()));
         assert_eq!(args.last().unwrap(), "URL");
         args[..p].to_vec()
     }
@@ -276,10 +327,55 @@ mod tests {
 
     #[test]
     fn progress_lines() {
-        assert_eq!(parse_progress("SVPROG  84.4%"), Some(84.4));
-        assert_eq!(parse_progress("SVPROG 100.0%"), Some(100.0));
-        assert_eq!(parse_progress("SVPROG N/A"), None);
+        assert_eq!(parse_progress("SVPROG 1024 4096 NA"), Some((1024, Some(4096))));
+        assert_eq!(parse_progress("SVPROG 1024 NA 5000"), Some((1024, Some(5000))));
+        assert_eq!(parse_progress("SVPROG 1024 NA NA"), Some((1024, None)));
         assert_eq!(parse_progress("[download] Destination: x.mp4"), None);
+        assert_eq!(parse_formats("SVFMT 137+140 5000"), Some((2, Some(5000))));
+        assert_eq!(parse_formats("SVFMT 18 NA"), Some((1, None)));
+    }
+
+    fn run_streams(p: &mut Progress, streams: &[(u64, &[u64])]) -> Vec<f32> {
+        let mut out = vec![];
+        for &(total, steps) in streams {
+            for &b in steps {
+                out.push(p.update(b, Some(total)));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn single_stream_is_plain_percent() {
+        let mut p = Progress::new();
+        p.set_formats(1, Some(1000));
+        assert_eq!(run_streams(&mut p, &[(1000, &[0, 500, 1000])]), [0.0, 50.0, 100.0]);
+    }
+
+    #[test]
+    fn two_streams_weigh_by_bytes() {
+        let mut p = Progress::new();
+        p.set_formats(2, Some(1000));
+        let got = run_streams(&mut p, &[(800, &[0, 400, 800]), (200, &[0, 100, 200])]);
+        assert_eq!(got, [0.0, 40.0, 80.0, 80.0, 90.0, 100.0]);
+    }
+
+    #[test]
+    fn unknown_total_weighs_streams_equally() {
+        let mut p = Progress::new();
+        p.set_formats(2, None);
+        let got = run_streams(&mut p, &[(800, &[0, 400, 800]), (200, &[0, 100, 200])]);
+        assert_eq!(got, [0.0, 25.0, 50.0, 50.0, 75.0, 100.0]);
+    }
+
+    #[test]
+    fn progress_never_goes_backwards() {
+        let mut p = Progress::new();
+        p.set_formats(2, Some(1000));
+        assert_eq!(p.update(600, Some(600)), 60.0);
+        assert_eq!(p.update(0, Some(400)), 60.0);
+        assert_eq!(p.update(400, Some(400)), 100.0);
+        assert_eq!(p.update(400, Some(400)), 100.0);
     }
 
     #[test]
