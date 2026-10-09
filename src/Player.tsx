@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   IconArrowsShuffle,
   IconDownload,
-  IconMusic,
+  IconListDetails,
   IconPlayerPauseFilled,
   IconPlayerPlayFilled,
   IconPlayerSkipBackFilled,
@@ -16,9 +16,10 @@ import type { Song } from "./types";
 export interface Track {
   key: string;
   src?: string;
-  poster?: string;
+  artwork: string;
+  audioOnly: boolean;
   title: string;
-  channel?: string;
+  artist?: string;
   status?: string;
 }
 
@@ -30,10 +31,12 @@ export function formatDuration(secs: number) {
 interface Props {
   track: Track | null;
   upNext: Song[];
+  expanded: boolean;
   canPrev: boolean;
   canNext: boolean;
   shuffle: boolean;
   repeat: boolean;
+  onToggleExpanded: () => void;
   onPrev: () => void;
   onNext: () => void;
   onEnded: () => void;
@@ -50,10 +53,14 @@ export function Player(props: Props) {
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
+  const [noVideo, setNoVideo] = useState(false);
+  const open = props.expanded && !!track;
+  const showArt = !!track && (track.audioOnly || noVideo);
 
   useEffect(() => {
     setTime(0);
     setDuration(0);
+    setNoVideo(false);
   }, [track?.key]);
 
   useEffect(() => {
@@ -66,57 +73,25 @@ export function Player(props: Props) {
     v.paused ? v.play() : v.pause();
   }
 
-  return (
-    <section className="player">
-      {track ? (
-        <video
-          key={track.key}
-          ref={video}
-          className="screen"
-          src={track.src}
-          poster={track.poster}
-          autoPlay
-          onClick={toggle}
-          onDoubleClick={() => video.current?.requestFullscreen()}
-          onPlay={() => setPaused(false)}
-          onPause={() => setPaused(true)}
-          onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
-          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
-          onEnded={props.onEnded}
-        />
-      ) : (
-        <div className="screen empty">
-          <IconMusic size={40} />
+  const bar = (
+    <footer className="player-bar">
+      <div className="bar-track">
+        {track && (
+          <button className="bar-art" aria-label="Now playing" onClick={props.onToggleExpanded}>
+            <img src={track.artwork} alt="" />
+          </button>
+        )}
+        <div className="meta">
+          <span className="title">{track?.title ?? "Nothing playing"}</span>
+          <span className="channel">
+            {track?.status ?? track?.artist}
+            {props.onDownload && (
+              <button className="chip" onClick={props.onDownload}>
+                <IconDownload size={14} /> Download
+              </button>
+            )}
+          </span>
         </div>
-      )}
-
-      <div className="track">
-        <div className="track-title">{track?.title ?? "Nothing playing"}</div>
-        <div className="track-sub">
-          {track?.status ?? track?.channel}
-          {props.onDownload && (
-            <button className="chip" onClick={props.onDownload}>
-              <IconDownload size={14} /> Download
-            </button>
-          )}
-        </div>
-      </div>
-
-      <input
-        className="seek"
-        type="range"
-        min={0}
-        max={duration || 0}
-        step={0.1}
-        value={time}
-        style={{ "--pct": `${duration ? (time / duration) * 100 : 0}%` } as CSSProperties}
-        onChange={(e) => {
-          if (video.current) video.current.currentTime = Number(e.target.value);
-        }}
-      />
-      <div className="times">
-        <span>{formatDuration(time)}</span>
-        <span>{formatDuration(duration)}</span>
       </div>
 
       <div className="transport">
@@ -137,6 +112,23 @@ export function Player(props: Props) {
         </button>
       </div>
 
+      <div className="bar-seek">
+        <span>{formatDuration(time)}</span>
+        <input
+          className="seek"
+          type="range"
+          min={0}
+          max={duration || 0}
+          step={0.1}
+          value={time}
+          style={{ "--pct": `${duration ? (time / duration) * 100 : 0}%` } as CSSProperties}
+          onChange={(e) => {
+            if (video.current) video.current.currentTime = Number(e.target.value);
+          }}
+        />
+        <span>{formatDuration(duration)}</span>
+      </div>
+
       <div className="volume">
         <button className="icon" aria-label="Mute" onClick={() => setVolume((v) => (v ? 0 : 1))}>
           {volume ? <IconVolume size={16} /> : <IconVolumeOff size={16} />}
@@ -153,20 +145,58 @@ export function Player(props: Props) {
         />
       </div>
 
-      {props.upNext.length > 0 && (
-        <div className="up-next">
-          <div className="label">Up next</div>
-          {props.upNext.map((s) => (
-            <button key={s.id} className="up-next-row" onClick={() => props.onPick(s)}>
-              <img src={s.thumbnail} alt="" />
-              <span className="meta">
-                <span className="title">{s.title}</span>
-                <span className="channel">{s.channel}</span>
-              </span>
-            </button>
-          ))}
+      <button className={open ? "upnext-toggle on" : "upnext-toggle"} disabled={!track} onClick={props.onToggleExpanded}>
+        <IconListDetails size={18} />
+        Up next
+      </button>
+    </footer>
+  );
+
+  return (
+    <>
+      <section className={open ? "now-playing open" : "now-playing"}>
+        <div className="np-main">
+          <div className="stage">
+            {track && (
+              <video
+                key={track.key}
+                ref={video}
+                className="screen"
+                src={track.src}
+                autoPlay
+                onClick={toggle}
+                onDoubleClick={() => video.current?.requestFullscreen()}
+                onPlay={() => setPaused(false)}
+                onPause={() => setPaused(true)}
+                onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+                onLoadedMetadata={(e) => {
+                  setDuration(e.currentTarget.duration);
+                  setNoVideo(e.currentTarget.videoWidth === 0);
+                }}
+                onEnded={props.onEnded}
+              />
+            )}
+            {showArt && <img className="artwork" src={track.artwork} alt="" />}
+          </div>
+          <div className="np-title">{track?.title}</div>
+          <div className="np-artist">{track?.artist}</div>
         </div>
-      )}
-    </section>
+        {props.upNext.length > 0 && (
+          <div className="up-next">
+            <div className="label">Up next</div>
+            {props.upNext.map((s) => (
+              <button key={s.id} className="up-next-row" onClick={() => props.onPick(s)}>
+                <img src={s.thumbnail} alt="" />
+                <span className="meta">
+                  <span className="title">{s.title}</span>
+                  <span className="channel">{s.channel}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </section>
+      {bar}
+    </>
   );
 }

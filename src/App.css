@@ -82,11 +82,12 @@ button.icon.on {
 
 .app {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr) 340px;
-  grid-template-rows: auto 1fr;
+  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) 64px;
   grid-template-areas:
-    "top top top"
-    "side main player";
+    "top top"
+    "side main"
+    "bar bar";
   height: 100vh;
 }
 
@@ -536,11 +537,11 @@ button.icon.on {
 .prompt {
   position: fixed;
   left: 240px;
-  bottom: 20px;
+  bottom: 84px;
   z-index: 30;
   display: flex;
   gap: 16px;
-  width: min(560px, calc(100vw - 600px));
+  width: min(560px, calc(100vw - 260px));
   padding: 14px;
   background: var(--raised);
   border: 1px solid var(--border);
@@ -699,57 +700,50 @@ button.icon.on {
   color: var(--muted);
 }
 
-/* player */
+/* player bar */
 
-.player {
-  grid-area: player;
+.player-bar {
+  grid-area: bar;
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-  padding: 16px;
+  align-items: center;
+  gap: 24px;
+  padding: 0 16px;
   background: var(--panel);
-  border-left: 1px solid var(--border);
-  overflow-y: auto;
+  border-top: 1px solid var(--border);
 }
 
-.screen {
-  width: 100%;
-  aspect-ratio: 16 / 9;
-  object-fit: contain;
-  background: #000;
-  border-radius: 10px;
-  cursor: pointer;
-}
-
-.screen.empty {
+.bar-track {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: var(--raised);
-  color: var(--border);
-  cursor: default;
-}
-
-.track {
+  gap: 12px;
+  flex: 0 0 280px;
   min-width: 0;
-  margin-top: 4px;
 }
 
-.track-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 15px;
-  font-weight: 600;
+.bar-track .meta {
+  flex: 1;
 }
 
-.track-sub {
+.bar-track .channel {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 24px;
-  color: var(--muted);
+  gap: 8px;
+}
+
+.bar-art {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--raised);
+}
+
+.bar-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .chip {
@@ -790,19 +784,9 @@ button.icon.on {
   opacity: 1;
 }
 
-.times {
-  display: flex;
-  justify-content: space-between;
-  margin-top: -4px;
-  color: var(--muted);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
 .transport {
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 14px;
 }
 
@@ -823,8 +807,8 @@ button.icon.on {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -836,17 +820,105 @@ button.icon.on {
   transform: scale(1.05);
 }
 
+.bar-seek {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .volume {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: none;
+}
+
+.volume .seek {
+  width: 90px;
+}
+
+.upnext-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.upnext-toggle.on {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* expanded now playing */
+
+.now-playing {
+  grid-area: main;
+  z-index: 5;
+  display: flex;
+  gap: 24px;
+  min-height: 0;
+  padding: 24px;
+  background: var(--bg);
+  overflow-y: auto;
+  visibility: hidden;
+}
+
+.now-playing.open {
+  visibility: visible;
+}
+
+.np-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.stage {
+  position: relative;
+  width: min(100%, calc((100vh - 260px) * 16 / 9));
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.screen {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  cursor: pointer;
+}
+
+.artwork {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.np-title {
+  margin-top: 16px;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.np-artist {
+  margin-top: 4px;
+  color: var(--muted);
 }
 
 .up-next {
   display: flex;
   flex-direction: column;
+  flex: none;
   gap: 2px;
-  margin-top: 8px;
+  width: 320px;
 }
 
 .label {

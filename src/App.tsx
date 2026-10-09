@@ -29,6 +29,7 @@ const SETTINGS = "settings";
 
 const watchUrl = (id: string) => `https://www.youtube.com/watch?v=${id}`;
 const thumbnailUrl = (id: string) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
+const artworkUrl = (id: string) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 const isLink = (text: string) => /^https?:\/\/|youtu\.?be/i.test(text);
 const isSong = (r: SearchResult) => r.duration > 0 && r.duration < 600;
 
@@ -58,6 +59,7 @@ function App() {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [creating, setCreating] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -128,6 +130,8 @@ function App() {
       unlisten.then((fns) => fns.forEach((fn) => fn()));
     };
   }, []);
+
+  useEffect(() => setExpanded(false), [view]);
 
   useEffect(() => {
     if (toolsReady) invoke<string>("ytdlp_version").then(setYtdlp, (e) => setYtdlp(String(e)));
@@ -333,7 +337,8 @@ function App() {
     ? {
         key: `preview-${preview.id}`,
         src: preview.url,
-        poster: thumbnailUrl(preview.id),
+        artwork: artworkUrl(preview.id),
+        audioOnly: true,
         title: preview.title,
         status: preview.error ?? (preview.url ? "Preview" : "Loading preview…"),
       }
@@ -341,9 +346,10 @@ function App() {
       ? {
           key: playing.id,
           src: convertFileSrc(`${dir}\\${playing.file}`),
-          poster: playing.file.endsWith(".mp4") ? undefined : playing.thumbnail,
+          artwork: artworkUrl(playing.id),
+          audioOnly: playing.file.endsWith(".m4a"),
           title: playing.title,
-          channel: playing.channel,
+          artist: playing.channel,
         }
       : null;
   const previewDownloadable =
@@ -737,7 +743,9 @@ function App() {
 
       <Player
         track={track}
-        upNext={preview ? [] : queue.slice(queueIndex + 1, queueIndex + 6)}
+        upNext={preview ? [] : queue.slice(queueIndex + 1)}
+        expanded={expanded}
+        onToggleExpanded={() => setExpanded((e) => !e)}
         canPrev={!preview && (queueIndex > 0 || (repeat && queue.length > 1))}
         canNext={!preview && queueIndex >= 0 && (queueIndex < queue.length - 1 || (repeat && queue.length > 1))}
         shuffle={shuffle}
