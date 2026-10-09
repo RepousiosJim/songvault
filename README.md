@@ -14,18 +14,11 @@ A Windows desktop app that downloads songs from YouTube with [yt-dlp](https://gi
 - Playlists can be reordered by drag and drop.
 - Built-in player with shuffle, repeat, volume and an up-next queue.
 - Settings: library folder (move existing songs or not), quality cap, audio only, number of search results.
-- Update yt-dlp from inside the app. Failed downloads keep the full yt-dlp log.
+- Update yt-dlp from Settings. Failed downloads keep the full yt-dlp log.
 
 ## Requirements
 
-- Windows 10 or 11 (WebView2 is preinstalled).
-- yt-dlp and ffmpeg on `PATH`:
-
-```powershell
-winget install yt-dlp.yt-dlp Gyan.FFmpeg
-```
-
-The in-app yt-dlp update uses winget, so it only works for a winget install.
+Windows 10 or 11. On first launch songvault downloads [yt-dlp](https://github.com/yt-dlp/yt-dlp) and [ffmpeg](https://github.com/yt-dlp/FFmpeg-Builds) (about 110 MB) into `%LOCALAPPDATA%\com.gemelon.songvault\bin`. Nothing else needs installing.
 
 ## Install
 

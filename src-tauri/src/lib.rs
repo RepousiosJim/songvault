@@ -1,6 +1,7 @@
 mod library;
 mod settings;
 mod suggest;
+mod tools;
 mod ytdlp;
 
 use library::{Library, Playlist, Song};
@@ -19,6 +20,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 /// Lock `library` before `settings` when holding both.
 struct AppState {
     config_path: PathBuf,
+    bin: PathBuf,
     settings: Mutex<Settings>,
     library: Mutex<Library>,
 }
@@ -145,6 +147,23 @@ fn delete_song(state: State<AppState>, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn tools_ready(state: State<AppState>) -> bool {
+    tools::ready(&state.bin)
+}
+
+#[tauri::command]
+async fn install_tools(app: AppHandle) -> Result<(), String> {
+    let bin = app.state::<AppState>().bin.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        tools::install(&bin, |name, percent| {
+            let _ = app.emit("tools-progress", json!({ "name": name, "percent": percent }));
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn ytdlp_version() -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(ytdlp::version).await.map_err(|e| e.to_string())?
 }
@@ -190,11 +209,13 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let config_path = app.path().app_config_dir()?.join("settings.json");
+            let bin = app.path().app_local_data_dir()?.join("bin");
+            tools::use_bin(&bin);
             let settings = Settings::load(&config_path, app.path().audio_dir()?.join("songvault"))?;
             fs::create_dir_all(&settings.library_dir)?;
             let library = Library::load(&settings.library_dir)?;
             app.asset_protocol_scope().allow_directory(&settings.library_dir, true)?;
-            app.manage(AppState { config_path, settings: Mutex::new(settings), library: Mutex::new(library) });
+            app.manage(AppState { config_path, bin, settings: Mutex::new(settings), library: Mutex::new(library) });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -205,6 +226,8 @@ pub fn run() {
             download,
             delete_song,
             save_playlists,
+            tools_ready,
+            install_tools,
             ytdlp_version,
             update_ytdlp,
             search,

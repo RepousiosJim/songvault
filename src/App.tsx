@@ -19,6 +19,7 @@ import {
 } from "@tabler/icons-react";
 import type { Job, LibraryView, Playlist, Preview, Quality, SearchResult, Settings, Song } from "./types";
 import { formatDuration, Player, type Track } from "./Player";
+import { Setup } from "./Setup";
 import "./App.css";
 
 const LIBRARY = "library";
@@ -60,6 +61,7 @@ function App() {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [justAdded, setJustAdded] = useState<Song[]>([]);
+  const [toolsReady, setToolsReady] = useState<boolean | null>(null);
   const [ytdlp, setYtdlp] = useState("");
   const [updating, setUpdating] = useState(false);
   const [updateOutput, setUpdateOutput] = useState("");
@@ -96,7 +98,7 @@ function App() {
   }, [field]);
 
   useEffect(() => {
-    invoke<string>("ytdlp_version").then(setYtdlp, (e) => setYtdlp(String(e)));
+    invoke<boolean>("tools_ready").then(setToolsReady);
     invoke<LibraryView>("get_library").then(applyLibrary);
     invoke<Settings>("get_settings").then(setSettings);
 
@@ -123,6 +125,10 @@ function App() {
       unlisten.then((fns) => fns.forEach((fn) => fn()));
     };
   }, []);
+
+  useEffect(() => {
+    if (toolsReady) invoke<string>("ytdlp_version").then(setYtdlp, (e) => setYtdlp(String(e)));
+  }, [toolsReady]);
 
   function applyLibrary(lib: LibraryView) {
     setDir(lib.dir);
@@ -341,6 +347,8 @@ function App() {
 
   const heading =
     view === SEARCH ? (searchedFor ? `Results for "${searchedFor}"` : "Search") : playlist ? playlist.name : "Library";
+
+  if (toolsReady === false) return <Setup onReady={() => setToolsReady(true)} />;
 
   return (
     <div className="app" onClick={() => setMenuFor(null)}>

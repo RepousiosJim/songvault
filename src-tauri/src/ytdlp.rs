@@ -132,7 +132,7 @@ pub fn version() -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// winget prints spinners and progress with carriage returns; the last real line is its verdict.
+/// Updaters print progress with carriage returns; the last real line is the verdict.
 pub fn last_line(output: &str) -> String {
     output
         .split(['\r', '\n'])
@@ -143,14 +143,9 @@ pub fn last_line(output: &str) -> String {
         .to_string()
 }
 
-/// Upgrades the winget-installed yt-dlp. winget exits non-zero when no upgrade exists, so the
-/// caller judges the outcome from its last line and the version afterwards.
+/// Runs yt-dlp's self-updater on the app's copy; its last line is the verdict.
 pub fn update() -> Result<(String, String), String> {
-    let output = hidden("winget")
-        .args(["upgrade", "--id", "yt-dlp.yt-dlp", "-e", "--silent"])
-        .args(["--accept-source-agreements", "--accept-package-agreements"])
-        .output()
-        .map_err(|e| format!("could not start winget: {e}"))?;
+    let output = hidden("yt-dlp").arg("-U").output().map_err(|e| format!("could not start yt-dlp: {e}"))?;
     Ok((version()?, last_line(&String::from_utf8_lossy(&output.stdout))))
 }
 
