@@ -29,7 +29,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import type { Job, LibraryView, Playlist, PlaylistInfo, Preview, Quality, SearchResult, Settings, Song } from "./types";
-import { artistOf, cleanTitle, parseYouTubeLink } from "./songs";
+import { artistOf, cleanTitle, parseYouTubeLink, type YouTubeLink } from "./songs";
 import { formatDuration, isTyping, Player, type Track } from "./Player";
 import { Setup } from "./Setup";
 import "./App.css";
@@ -135,6 +135,9 @@ function App() {
   const [searchedFor, setSearchedFor] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [songsOnly, setSongsOnly] = useState(true);
+  const [fromLink, setFromLink] = useState<{ playlist?: PlaylistInfo } | null>(null);
+  const requests = useRef(0);
+  const lookedUp = useRef("");
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -165,6 +168,18 @@ function App() {
     }, 200);
     return () => clearTimeout(timer);
   }, [field]);
+
+  const link = parseYouTubeLink(field);
+  const linkKey = link ? (link.kind === "video" ? link.id : `list:${link.list}`) : "";
+
+  useEffect(() => {
+    if (!link) {
+      lookedUp.current = "";
+      return;
+    }
+    const timer = setTimeout(() => lookedUp.current !== linkKey && lookUp(link), 300);
+    return () => clearTimeout(timer);
+  }, [linkKey]);
 
   useEffect(() => {
     invoke<boolean>("tools_ready").then(setToolsReady);
@@ -312,7 +327,8 @@ function App() {
   const playing = queue[queueIndex];
   const activeJobs = jobs.filter((j) => !j.error);
   const failedJobs = jobs.filter((j) => j.error);
-  const shownResults = songsOnly ? results.filter(isSong) : results;
+  const importable = fromLink?.playlist;
+  const shownResults = songsOnly && !fromLink ? results.filter(isSong) : results;
 
   function startDownload(target: string, extra: Partial<Job> = {}) {
     setJobs((js) => [...js, { id: crypto.randomUUID(), url: target, percent: 0, queued: true, ...extra }]);
@@ -321,15 +337,36 @@ function App() {
   function submitField(text = field) {
     const q = text.trim();
     if (!q) return;
-    const link = parseYouTubeLink(q);
-    if (!link) return runSearch(q);
-    setField("");
+    const typed = parseYouTubeLink(q);
+    if (typed) lookUp(typed);
+    else runSearch(q);
+  }
+
+  async function lookUp(target: YouTubeLink) {
+    const request = ++requests.current;
+    lookedUp.current = target.kind === "video" ? target.id : `list:${target.list}`;
+    suggestFor.current = "";
     setSuggestions([]);
-    if (link.kind === "video") return startDownload(watchUrl(link.id));
-    const url = playlistUrl(link.list);
-    invoke<PlaylistInfo>("playlist_info", { url }).then(importPlaylist, (e) =>
-      setJobs((js) => [...js, { id: crypto.randomUUID(), url, percent: 0, error: String(e) }]),
-    );
+    setView(SEARCH);
+    setFromLink({});
+    setResults([]);
+    setSearching(true);
+    setSearchError("");
+    try {
+      if (target.kind === "video") {
+        const found = await invoke<SearchResult>("video_info", { url: watchUrl(target.id) });
+        if (request === requests.current) setResults([found]);
+      } else {
+        const info = await invoke<PlaylistInfo>("playlist_info", { url: playlistUrl(target.list) });
+        if (request !== requests.current) return;
+        setResults(info.entries);
+        setFromLink({ playlist: info });
+      }
+    } catch (e) {
+      if (request !== requests.current) return;
+      setSearchError(String(e));
+    }
+    if (request === requests.current) setSearching(false);
   }
 
   function importPlaylist(info: PlaylistInfo) {
@@ -361,6 +398,8 @@ function App() {
   }
 
   async function runSearch(q: string) {
+    const request = ++requests.current;
+    setFromLink(null);
     suggestFor.current = "";
     searchedQuery.current = q;
     setSuggestions([]);
@@ -371,9 +410,11 @@ function App() {
     setSearchError("");
     try {
       const found = await invoke<SearchResult[]>("search", { query: q });
+      if (request !== requests.current) return;
       setResults(found);
       if (!found.length) setSearchError(`No results for "${q}".`);
     } catch (e) {
+      if (request !== requests.current) return;
       setSearchError(String(e));
     }
     setSearching(false);
@@ -587,9 +628,11 @@ function App() {
 
   const heading =
     view === SEARCH
-      ? searchedFor
-        ? `Results for "${searchedFor}"`
-        : "Search"
+      ? fromLink
+        ? (fromLink.playlist?.title ?? "From link")
+        : searchedFor
+          ? `Results for "${searchedFor}"`
+          : "Search"
       : playlist
         ? playlist.name
         : (SMART[view]?.[0] ?? "Library");
@@ -870,12 +913,19 @@ function App() {
                 {view === SEARCH
                   ? searching
                     ? "Searching…"
-                    : results.length > 0 &&
+                    : importable
+                      ? `${results.length} songs`
+                      : results.length > 0 &&
                       (shownResults.length < results.length
                         ? `${shownResults.length} songs · ${results.length - shownResults.length} hidden`
                         : `${results.length} results`)
                   : `${visible.length} ${visible.length === 1 ? "song" : "songs"} · ${totalLength(visible)}`}
               </span>
+              {view === SEARCH && importable && (
+                <button onClick={() => importPlaylist(importable)}>
+                  <IconPlaylistAdd size={16} /> Import playlist
+                </button>
+              )}
               {view === LIBRARY && (
                 <>
                   <input
@@ -916,7 +966,7 @@ function App() {
                 </button>
               </div>
             )}
-            {view === SEARCH && results.length > 0 && (
+            {view === SEARCH && !fromLink && results.length > 0 && (
               <div className="chips">
                 <button className={songsOnly ? "chip on" : "chip"} onClick={() => setSongsOnly(true)}>
                   Songs
@@ -927,7 +977,7 @@ function App() {
               </div>
             )}
             {view === SEARCH && searchError && <div className="error">{searchError}</div>}
-            {view === SEARCH && !searchedFor && (
+            {view === SEARCH && !searchedFor && !fromLink && (
               <button className="search-empty" onClick={() => fieldRef.current?.focus()}>
                 <IconSearch size={36} />
                 <span>Type a song or artist in the field above</span>

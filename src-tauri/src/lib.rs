@@ -249,6 +249,11 @@ async fn search(state: State<'_, AppState>, query: String) -> Result<Vec<ytdlp::
 }
 
 #[tauri::command]
+async fn video_info(url: String) -> Result<ytdlp::SearchResult, String> {
+    tauri::async_runtime::spawn_blocking(move || ytdlp::video_info(&url)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn playlist_info(url: String) -> Result<ytdlp::PlaylistInfo, String> {
     tauri::async_runtime::spawn_blocking(move || ytdlp::playlist_info(&url)).await.map_err(|e| e.to_string())?
 }
@@ -348,6 +353,7 @@ pub fn run() {
             update_ytdlp,
             auto_update_ytdlp,
             search,
+            video_info,
             playlist_info,
             suggest,
             stream_url

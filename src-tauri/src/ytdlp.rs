@@ -81,6 +81,21 @@ pub struct PlaylistInfo {
     pub entries: Vec<SearchResult>,
 }
 
+pub fn video_info(url: &str) -> Result<SearchResult, String> {
+    let output = hidden("yt-dlp")
+        .args(video_args(url))
+        .output()
+        .map_err(|e| format!("could not start yt-dlp: {e}"))?;
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .find_map(|l| parse_result(l.trim()))
+        .ok_or_else(|| last_error(&String::from_utf8_lossy(&output.stderr)))
+}
+
+pub fn video_args(url: &str) -> Vec<String> {
+    ["--no-playlist", "--skip-download", "--print", RESULT_PRINT, url].map(String::from).into()
+}
+
 pub fn playlist_info(url: &str) -> Result<PlaylistInfo, String> {
     let output = hidden("yt-dlp")
         .args(playlist_args(url))
@@ -401,6 +416,13 @@ mod tests {
         assert_eq!(ids, [("aaaaaaaaaaa", "A", 120), ("bbbbbbbbbbb", "B", 0)]);
         assert_eq!(parse_playlist("SVPL NA\n").title, "Playlist");
         assert_eq!(playlist_args("U").last().unwrap(), "U");
+    }
+
+    #[test]
+    fn video_lookup_ignores_the_rest_of_a_playlist() {
+        let args = video_args("U");
+        assert_eq!(args[..2], ["--no-playlist", "--skip-download"]);
+        assert_eq!(args.last().unwrap(), "U");
     }
 
     #[test]

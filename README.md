@@ -23,9 +23,9 @@
 ## Features
 
 **Download**
-- Paste a YouTube link to save it as MP4 video, or as M4A when Audio only is on.
+- Paste a YouTube link to look it up. It appears as a search result: preview it, then download it as MP4 video, or as M4A when Audio only is on.
 - Cap video quality at 1080p, 720p or 480p to save space.
-- Paste a playlist link to import it as a songvault playlist. Songs already in your library are added at once and the rest download in order.
+- Paste a playlist link to list its songs, then **Import playlist** to create a songvault playlist from it. Songs already in your library are added at once and the rest download in order.
 - Downloads run three at a time; the rest wait in the queue.
 - A progress pill tracks every download. If a download fails, you can open yt-dlp's full log.
 
