@@ -246,6 +246,25 @@ async fn stream_url(id: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || ytdlp::stream_url(&id)).await.map_err(|e| e.to_string())?
 }
 
+/// Updates yt-dlp if the last automatic update is over a week old. Returns the new version.
+#[tauri::command]
+async fn auto_update_ytdlp(app: AppHandle) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        if !state.settings.lock().unwrap().ytdlp_update_due(now) {
+            return Ok(None);
+        }
+        let (version, _) = ytdlp::update()?;
+        let mut settings = state.settings.lock().unwrap();
+        settings.ytdlp_checked_at = now;
+        settings.save(&state.config_path).map_err(|e| e.to_string())?;
+        Ok(Some(version))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[derive(Serialize)]
 struct UpdateResult {
     version: String,
@@ -276,6 +295,8 @@ fn export_m3u(state: State<AppState>, playlist_id: String, path: String) -> Resu
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .setup(|app| {
             let config_path = app.path().app_config_dir()?.join("settings.json");
             let bin = app.path().app_local_data_dir()?.join("bin");
@@ -307,6 +328,7 @@ pub fn run() {
             install_tools,
             ytdlp_version,
             update_ytdlp,
+            auto_update_ytdlp,
             search,
             suggest,
             stream_url

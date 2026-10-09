@@ -175,6 +175,10 @@ button.icon.on {
   white-space: nowrap;
 }
 
+.pill.update {
+  color: var(--accent);
+}
+
 .pill.failed,
 .failed-count {
   color: var(--danger);

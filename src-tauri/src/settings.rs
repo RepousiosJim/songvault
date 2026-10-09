@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::{Path, PathBuf}};
 
+const YTDLP_UPDATE_INTERVAL: u64 = 7 * 24 * 60 * 60;
+
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq)]
 pub enum Quality {
     #[default]
@@ -34,6 +36,8 @@ pub struct Settings {
     pub search_count: u32,
     pub cut_non_music: bool,
     pub even_volume: bool,
+    /// Unix seconds of the last automatic yt-dlp update.
+    pub ytdlp_checked_at: u64,
 }
 
 impl Default for Settings {
@@ -45,6 +49,7 @@ impl Default for Settings {
             search_count: 20,
             cut_non_music: true,
             even_volume: true,
+            ytdlp_checked_at: 0,
         }
     }
 }
@@ -60,6 +65,10 @@ impl Settings {
             settings.library_dir = default_library;
         }
         Ok(settings)
+    }
+
+    pub fn ytdlp_update_due(&self, now: u64) -> bool {
+        now.saturating_sub(self.ytdlp_checked_at) > YTDLP_UPDATE_INTERVAL
     }
 
     pub fn save(&self, path: &Path) -> io::Result<()> {
@@ -89,6 +98,15 @@ pub mod tests {
         assert!(settings.audio_only);
         assert_eq!(settings.search_count, 20);
         assert!(settings.cut_non_music && settings.even_volume);
+    }
+
+    #[test]
+    fn ytdlp_update_is_due_after_a_week() {
+        let settings = Settings { ytdlp_checked_at: 1_000, ..Settings::default() };
+        assert!(!settings.ytdlp_update_due(1_000 + YTDLP_UPDATE_INTERVAL));
+        assert!(settings.ytdlp_update_due(1_000 + YTDLP_UPDATE_INTERVAL + 1));
+        assert!(!settings.ytdlp_update_due(0));
+        assert!(Settings::default().ytdlp_update_due(1_800_000_000));
     }
 
     #[test]

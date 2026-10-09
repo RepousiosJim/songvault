@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { relaunch } from "@tauri-apps/plugin-process";
+import { check, type Update } from "@tauri-apps/plugin-updater";
 import {
   IconBrandYoutube,
   IconChevronRight,
@@ -93,6 +95,8 @@ function App() {
   const [toolsReady, setToolsReady] = useState<boolean | null>(null);
   const [ytdlp, setYtdlp] = useState("");
   const [updating, setUpdating] = useState(false);
+  const [update, setUpdate] = useState<Update | null>(null);
+  const [installing, setInstalling] = useState(false);
   const [updateOutput, setUpdateOutput] = useState("");
   const [field, setField] = useState("");
   const [searchedFor, setSearchedFor] = useState("");
@@ -188,8 +192,14 @@ function App() {
   });
 
   useEffect(() => {
-    if (toolsReady) invoke<string>("ytdlp_version").then(setYtdlp, (e) => setYtdlp(String(e)));
+    if (!toolsReady) return;
+    invoke<string>("ytdlp_version").then(setYtdlp, (e) => setYtdlp(String(e)));
+    invoke<string | null>("auto_update_ytdlp").then((version) => version && setYtdlp(version), () => {});
   }, [toolsReady]);
+
+  useEffect(() => {
+    check().then((found) => found && setUpdate(found), () => {});
+  }, []);
 
   function applyLibrary(lib: LibraryView) {
     setDir(lib.dir);
@@ -299,6 +309,17 @@ function App() {
       if (previewId.current === r.id) setPreview({ id: r.id, title: r.title, url: streamUrl });
     } catch (e) {
       if (previewId.current === r.id) setPreview({ id: r.id, title: r.title, error: String(e) });
+    }
+  }
+
+  async function installUpdate() {
+    if (!update) return;
+    setInstalling(true);
+    try {
+      await update.downloadAndInstall();
+      await relaunch();
+    } catch {
+      setInstalling(false);
     }
   }
 
@@ -533,6 +554,11 @@ function App() {
             </ul>
           )}
         </div>
+        {update && (
+          <button className="pill update" disabled={installing} onClick={installUpdate}>
+            {installing ? "Updating…" : `Update to v${update.version}`}
+          </button>
+        )}
         {jobs.length > 0 && (
           <div className="downloads" onClick={(e) => e.stopPropagation()}>
             <button className={failedJobs.length ? "pill failed" : "pill"} onClick={() => setShowJobs((s) => !s)}>

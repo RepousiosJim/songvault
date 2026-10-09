@@ -25,9 +25,16 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ5QjI3QzQ4OTM0NTY2NzEKUldSeFprV1RTSHl5MlFjcWpEV0dRK1I3K2FXQ25NNnErZU02aU1pQ005a1NNbWtHODlKK2lEazQK",
+      "endpoints": ["https://github.com/RepousiosJim/songvault/releases/latest/download/latest.json"]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

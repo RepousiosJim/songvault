@@ -39,6 +39,8 @@
 **Player**
 - Built-in player with seek, shuffle, repeat, volume and an up-next queue.
 - Double-click the video for fullscreen.
+- Export a playlist as an `.m3u8` file for other players.
+- Updates itself: a button appears in the top bar when a new version is released.
 
 ## Install
 
@@ -57,8 +59,10 @@ Requires Windows 10 or 11, 64-bit.
 | Library folder | `Music\songvault` | When you change it, choose whether to move your songs or start with the library in the new folder. |
 | Quality | Best | Highest video height to download. |
 | Audio only | Off | Saves M4A audio instead of MP4 video. |
+| Cut non-music parts | On | Removes non-music sections (intros, talking) from downloads using SponsorBlock data. |
+| Even volume | On | Plays loud songs a little quieter so levels match. Files are not changed. |
 | Search results | 20 | Number of results per search. |
-| yt-dlp | — | Shows the version. **Update** runs yt-dlp's own updater. Update when downloads start failing, since YouTube changes often. |
+| yt-dlp | — | Shows the version. It updates itself once a week; **Update** runs the updater now. |
 
 ## Where files live
 
@@ -68,7 +72,7 @@ Requires Windows 10 or 11, 64-bit.
 | Settings | `%APPDATA%\com.gemelon.songvault\settings.json` |
 | yt-dlp, ffmpeg, Deno | `%LOCALAPPDATA%\com.gemelon.songvault\bin` |
 
-Songs are plain media files named by video ID, so any player can open them. To move to another PC, copy the library folder, then select it in Settings.
+Songs are plain media files named `Artist - Title [video ID]`, with title, artist and cover art embedded, so any player can open them. To move to another PC, copy the library folder, then select it in Settings.
 
 ## Troubleshooting
 
@@ -97,6 +101,27 @@ Run the Rust tests with `cargo test` in `src-tauri`.
 | `src/` | React UI: `App.tsx` (views), `Player.tsx`, `Setup.tsx` (first-run download) |
 | `src-tauri/src/` | Rust backend: `ytdlp.rs` (download, search, progress), `library.rs`, `settings.rs`, `tools.rs` (tool download), `suggest.rs` |
 | `app-icon.svg` | Icon source. Regenerate the icon set with `pnpm tauri icon app-icon.svg` |
+
+## Releasing
+
+Updates are signed. Generate a key once with `pnpm tauri signer generate -w ~/.tauri/songvault.key` and keep the private key out of the repository. Its public half is `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`.
+
+1. Bump the version in `package.json`, `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json`.
+2. Set `TAURI_SIGNING_PRIVATE_KEY` to the key file's path or contents (plus `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if it has a password) and run `pnpm tauri build`.
+3. Create a GitHub release and upload the installer from `src-tauri/target/release/bundle/nsis`, its `.sig` file, and a `latest.json`. Installed copies read `latest.json` from the latest release:
+
+```json
+{
+  "version": "0.2.0",
+  "pub_date": "2026-01-01T00:00:00Z",
+  "platforms": {
+    "windows-x86_64": {
+      "signature": "<contents of the .sig file>",
+      "url": "https://github.com/RepousiosJim/songvault/releases/download/v0.2.0/songvault_0.2.0_x64-setup.exe"
+    }
+  }
+}
+```
 
 ## Built with
 
