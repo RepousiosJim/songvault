@@ -33,6 +33,7 @@ pub struct Settings {
     pub audio_only: bool,
     pub search_count: u32,
     pub cut_non_music: bool,
+    pub even_volume: bool,
 }
 
 impl Default for Settings {
@@ -43,6 +44,7 @@ impl Default for Settings {
             audio_only: false,
             search_count: 20,
             cut_non_music: true,
+            even_volume: true,
         }
     }
 }
@@ -86,7 +88,7 @@ pub mod tests {
         assert_eq!(settings.quality, Quality::P720);
         assert!(settings.audio_only);
         assert_eq!(settings.search_count, 20);
-        assert!(settings.cut_non_music);
+        assert!(settings.cut_non_music && settings.even_volume);
     }
 
     #[test]

@@ -21,6 +21,7 @@ export interface Track {
   audioOnly: boolean;
   title: string;
   artist?: string;
+  gain?: number;
   status?: string;
 }
 
@@ -68,8 +69,8 @@ export function Player(props: Props) {
   }, [track?.key]);
 
   useEffect(() => {
-    if (video.current) video.current.volume = volume;
-  }, [volume, track?.key]);
+    if (video.current) video.current.volume = volume * (track?.gain ?? 1);
+  }, [volume, track?.key, track?.gain]);
 
   function toggle() {
     const v = video.current;

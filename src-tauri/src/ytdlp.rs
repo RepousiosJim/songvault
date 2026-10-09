@@ -153,6 +153,7 @@ pub fn parse_song(line: &str, added_at: u64) -> Option<Song> {
         file,
         thumbnail: raw.thumbnail.unwrap_or_default(),
         added_at,
+        gain: None,
     })
 }
 

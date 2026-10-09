@@ -7,6 +7,7 @@ export interface Song {
   file: string;
   thumbnail: string;
   addedAt: number;
+  gain?: number;
 }
 
 export interface Playlist {
@@ -46,6 +47,7 @@ export interface Settings {
   audioOnly: boolean;
   searchCount: number;
   cutNonMusic: boolean;
+  evenVolume: boolean;
 }
 
 export interface LibraryView {

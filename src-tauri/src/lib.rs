@@ -1,4 +1,5 @@
 mod library;
+mod loudness;
 mod settings;
 mod suggest;
 mod tools;
@@ -70,12 +71,14 @@ fn save_settings(
     audio_only: bool,
     search_count: u32,
     cut_non_music: bool,
+    even_volume: bool,
 ) -> Result<(), String> {
     let mut settings = state.settings.lock().unwrap();
     settings.quality = quality;
     settings.audio_only = audio_only;
     settings.search_count = search_count;
     settings.cut_non_music = cut_non_music;
+    settings.even_volume = even_volume;
     settings.save(&state.config_path).map_err(|e| e.to_string())
 }
 
@@ -111,7 +114,10 @@ fn download(app: AppHandle, job_id: String, url: String) {
         let result = ytdlp::run(&settings, &url, added_at, |percent| {
             let _ = app.emit("download-progress", json!({ "jobId": job_id, "percent": percent }));
         })
-        .and_then(|song| upsert(&state, song));
+        .and_then(|mut song| {
+            song.gain = loudness::measure(&state.dir().join(&song.file)).ok();
+            upsert(&state, song)
+        });
         let _ = match result {
             Ok(song) => app.emit("download-done", json!({ "jobId": job_id, "song": song })),
             Err(log) => app.emit(
@@ -119,6 +125,26 @@ fn download(app: AppHandle, job_id: String, url: String) {
                 json!({ "jobId": job_id, "message": ytdlp::last_error(&log), "log": log }),
             ),
         };
+    });
+}
+
+/// Measures every song that has no gain yet, one at a time, and tells the frontend as each lands.
+fn measure_missing_gains(app: AppHandle) {
+    thread::spawn(move || {
+        let state = app.state::<AppState>();
+        let todo: Vec<(String, String)> = {
+            let library = state.library.lock().unwrap();
+            library.songs.iter().filter(|s| s.gain.is_none()).map(|s| (s.id.clone(), s.file.clone())).collect()
+        };
+        for (id, file) in todo {
+            let Ok(gain) = loudness::measure(&state.dir().join(file)) else { continue };
+            let mut library = state.library.lock().unwrap();
+            if let Some(song) = library.songs.iter_mut().find(|s| s.id == id) {
+                song.gain = Some(gain);
+                let _ = save(&state, &library);
+                let _ = app.emit("gain-measured", json!({ "id": id, "gain": gain }));
+            }
+        }
     });
 }
 
@@ -187,13 +213,16 @@ fn tools_ready(state: State<AppState>) -> bool {
 #[tauri::command]
 async fn install_tools(app: AppHandle) -> Result<(), String> {
     let bin = app.state::<AppState>().bin.clone();
+    let handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         tools::install(&bin, |name, percent| {
             let _ = app.emit("tools-progress", json!({ "name": name, "percent": percent }));
         })
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+    measure_missing_gains(handle);
+    Ok(())
 }
 
 #[tauri::command]
@@ -255,7 +284,11 @@ pub fn run() {
             fs::create_dir_all(&settings.library_dir)?;
             let library = Library::load(&settings.library_dir)?;
             app.asset_protocol_scope().allow_directory(&settings.library_dir, true)?;
+            let ready = tools::ready(&bin);
             app.manage(AppState { config_path, bin, settings: Mutex::new(settings), library: Mutex::new(library) });
+            if ready {
+                measure_missing_gains(app.handle().clone());
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

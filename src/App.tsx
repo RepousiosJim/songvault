@@ -145,6 +145,11 @@ function App() {
             : [...ss, payload.song],
         );
       }),
+      listen<{ id: string; gain: number }>("gain-measured", ({ payload }) => {
+        const patch = (s: Song) => (s.id === payload.id ? { ...s, gain: payload.gain } : s);
+        setAllSongs((ss) => ss.map(patch));
+        setQueue((q) => q.map(patch));
+      }),
       listen<{ jobId: string; message: string; log: string }>("download-error", ({ payload }) =>
         setJobs((js) =>
           js.map((j) => (j.id === payload.jobId ? { ...j, error: payload.message, log: payload.log } : j)),
@@ -192,7 +197,7 @@ function App() {
     setPlaylists(lib.playlists);
   }
 
-  function updateSettings(patch: Partial<Pick<Settings, "quality" | "audioOnly" | "searchCount" | "cutNonMusic">>) {
+  function updateSettings(patch: Partial<Pick<Settings, "quality" | "audioOnly" | "searchCount" | "cutNonMusic" | "evenVolume">>) {
     if (!settings) return;
     const next = { ...settings, ...patch };
     setSettings(next);
@@ -201,6 +206,7 @@ function App() {
       audioOnly: next.audioOnly,
       searchCount: next.searchCount,
       cutNonMusic: next.cutNonMusic,
+      evenVolume: next.evenVolume,
     });
   }
 
@@ -464,6 +470,7 @@ function App() {
           audioOnly: playing.file.endsWith(".m4a"),
           title: cleanTitle(playing.title),
           artist: artistOf(playing),
+          gain: settings?.evenVolume ? playing.gain : undefined,
         }
       : null;
   const previewDownloadable =
@@ -692,6 +699,14 @@ function App() {
                   type="checkbox"
                   checked={settings.cutNonMusic}
                   onChange={(e) => updateSettings({ cutNonMusic: e.target.checked })}
+                />
+              </label>
+              <label className="setting">
+                <span>Even volume</span>
+                <input
+                  type="checkbox"
+                  checked={settings.evenVolume}
+                  onChange={(e) => updateSettings({ evenVolume: e.target.checked })}
                 />
               </label>
               <label className="setting">

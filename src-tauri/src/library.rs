@@ -15,6 +15,8 @@ pub struct Song {
     pub file: String,
     pub thumbnail: String,
     pub added_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gain: Option<f32>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -105,6 +107,7 @@ mod tests {
             file: file.into(),
             thumbnail: String::new(),
             added_at: 0,
+            gain: None,
         }
     }
 
