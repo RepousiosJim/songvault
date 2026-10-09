@@ -7,11 +7,13 @@ import { check, type Update } from "@tauri-apps/plugin-updater";
 import {
   IconBrandYoutube,
   IconChevronRight,
+  IconClock,
   IconCircleCheckFilled,
   IconDownload,
   IconExternalLink,
   IconFileExport,
   IconFolder,
+  IconHistory,
   IconMusic,
   IconPencil,
   IconPlayerTrackNext,
@@ -22,6 +24,7 @@ import {
   IconSearch,
   IconSettings,
   IconTrash,
+  IconTrendingUp,
   IconVolume,
   IconX,
 } from "@tabler/icons-react";
@@ -52,6 +55,33 @@ const SORTS: Record<SortKey, [label: string, compare: (a: Song, b: Song) => numb
 };
 
 const BULK = "bulk";
+
+const DAY = 24 * 60 * 60 * 1000;
+
+const SMART: Record<string, [label: string, icon: typeof IconClock, pick: (songs: Song[], now: number) => Song[]]> = {
+  "smart:recent": [
+    "Recently added",
+    IconClock,
+    (songs, now) => songs.filter((s) => now - s.addedAt < 30 * DAY).sort((a, b) => b.addedAt - a.addedAt),
+  ],
+  "smart:most": [
+    "Most played",
+    IconTrendingUp,
+    (songs) =>
+      songs
+        .filter((s) => s.plays > 0)
+        .sort((a, b) => b.plays - a.plays)
+        .slice(0, 50),
+  ],
+  "smart:lapsed": [
+    "Not played lately",
+    IconHistory,
+    (songs, now) =>
+      songs
+        .filter((s) => !s.lastPlayed || now - s.lastPlayed > 30 * DAY)
+        .sort((a, b) => (a.lastPlayed ?? 0) - (b.lastPlayed ?? 0)),
+  ],
+};
 
 function totalLength(songs: Song[]) {
   const mins = Math.round(songs.reduce((sum, s) => sum + s.duration, 0) / 60);
@@ -260,7 +290,13 @@ function App() {
   const songs = useMemo(() => allSongs.filter((s) => !pending?.ids.includes(s.id)), [allSongs, pending]);
   const playlist = playlists.find((p) => p.id === view);
 
+  const smartLists = useMemo(
+    () => Object.fromEntries(Object.entries(SMART).map(([key, [, , pick]]) => [key, pick(songs, Date.now())])),
+    [songs],
+  );
+
   const visible = useMemo(() => {
+    if (smartLists[view]) return smartLists[view];
     if (playlist) {
       const byId = new Map(songs.map((s) => [s.id, s]));
       return playlist.songIds.flatMap((id) => byId.get(id) ?? []);
@@ -269,7 +305,7 @@ function App() {
     return [...songs]
       .sort(SORTS[sort][1])
       .filter((s) => !q || cleanTitle(s.title).toLowerCase().includes(q) || artistOf(s).toLowerCase().includes(q));
-  }, [songs, playlist, filter, sort]);
+  }, [songs, smartLists, view, playlist, filter, sort]);
 
   const ctxIds = ctx ? (selected.has(ctx.song.id) ? [...selected] : [ctx.song.id]) : [];
   const queueIndex = queue.findIndex((s) => s.id === playingId);
@@ -465,6 +501,14 @@ function App() {
     setPending(null);
   }
 
+  function recordPlay(id: string) {
+    invoke<Song>("record_play", { id }).then(({ plays, lastPlayed }) => {
+      const patch = (s: Song) => (s.id === id ? { ...s, plays, lastPlayed } : s);
+      setAllSongs((ss) => ss.map(patch));
+      setQueue((q) => q.map(patch));
+    });
+  }
+
   function editSong(song: Song, edit: { title: string; artist: string } | null) {
     setEditingId(null);
     if (!edit) return;
@@ -542,7 +586,13 @@ function App() {
     preview && !songs.some((s) => s.id === preview.id) && !activeJobs.some((j) => j.url === watchUrl(preview.id));
 
   const heading =
-    view === SEARCH ? (searchedFor ? `Results for "${searchedFor}"` : "Search") : playlist ? playlist.name : "Library";
+    view === SEARCH
+      ? searchedFor
+        ? `Results for "${searchedFor}"`
+        : "Search"
+      : playlist
+        ? playlist.name
+        : (SMART[view]?.[0] ?? "Library");
 
   if (toolsReady === false) return <Setup onReady={() => setToolsReady(true)} />;
 
@@ -667,6 +717,16 @@ function App() {
           <span className="nav-label">Library</span>
           <span className="count">{songs.length}</span>
         </button>
+        <div className="sidebar-head">
+          <span>Smart</span>
+        </div>
+        {Object.entries(SMART).map(([key, [label, Icon]]) => (
+          <button key={key} className={view === key ? "nav active" : "nav"} onClick={() => setView(key)}>
+            <Icon size={18} />
+            <span className="nav-label">{label}</span>
+            <span className="count">{smartLists[key].length}</span>
+          </button>
+        ))}
         <div className="sidebar-head">
           <span>Playlists</span>
           <button className="icon" aria-label="New playlist" onClick={() => setCreating(true)}>
@@ -1118,6 +1178,7 @@ function App() {
         onShuffle={toggleShuffle}
         onRepeat={() => setRepeat((r) => !r)}
         onPick={(s) => setPlayingId(s.id)}
+        onPlayed={playing && !preview ? () => recordPlay(playing.id) : undefined}
         onDownload={previewDownloadable ? () => startDownload(watchUrl(preview.id)) : undefined}
       />
     </div>

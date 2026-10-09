@@ -17,6 +17,11 @@ pub struct Song {
     pub added_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gain: Option<f32>,
+    #[serde(default)]
+    pub plays: u32,
+    /// Milliseconds since the Unix epoch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_played: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -46,6 +51,13 @@ impl Library {
         let tmp = dir.join(format!("{FILE_NAME}.tmp"));
         fs::write(&tmp, serde_json::to_vec_pretty(self)?)?;
         fs::rename(tmp, dir.join(FILE_NAME))
+    }
+
+    pub fn record_play(&mut self, id: &str, now: u64) -> Option<Song> {
+        let song = self.songs.iter_mut().find(|s| s.id == id)?;
+        song.plays += 1;
+        song.last_played = Some(now);
+        Some(song.clone())
     }
 
     /// An extended M3U listing of the playlist's songs, in order, with absolute paths.
@@ -108,6 +120,8 @@ mod tests {
             thumbnail: String::new(),
             added_at: 0,
             gain: None,
+            plays: 0,
+            last_played: None,
         }
     }
 
@@ -128,6 +142,16 @@ mod tests {
         let json = r#"{"songs":[{"id":"a","title":"A","channel":"C","duration":1,"file":"a.mp4","thumbnail":"","addedAt":0}],"playlists":[]}"#;
         let library: Library = serde_json::from_str(json).unwrap();
         assert_eq!(library.songs[0].artist, None);
+    }
+
+    #[test]
+    fn plays_are_counted_per_song() {
+        let mut library = Library { songs: vec![song("a", "a.mp4"), song("b", "b.m4a")], playlists: vec![] };
+        library.record_play("a", 10);
+        let played = library.record_play("a", 20).unwrap();
+        assert_eq!((played.plays, played.last_played), (2, Some(20)));
+        assert_eq!((library.songs[1].plays, library.songs[1].last_played), (0, None));
+        assert!(library.record_play("gone", 30).is_none());
     }
 
     #[test]

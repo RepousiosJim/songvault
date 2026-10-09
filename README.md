@@ -37,6 +37,7 @@
 - After each download, pick a playlist for the song or create a new one.
 - Rename playlists and drag songs to reorder them.
 - Filter the library by title or channel.
+- Smart lists build themselves: recently added, most played, and not played lately.
 
 **Player**
 - Built-in player with seek, shuffle, repeat, volume and an up-next queue.

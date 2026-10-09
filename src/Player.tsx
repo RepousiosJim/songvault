@@ -14,6 +14,8 @@ import {
 import { artistOf, cleanTitle } from "./songs";
 import type { Song } from "./types";
 
+const PLAYED_SECONDS = 30;
+
 export interface Track {
   key: string;
   src?: string;
@@ -48,6 +50,7 @@ interface Props {
   onShuffle: () => void;
   onRepeat: () => void;
   onPick: (song: Song) => void;
+  onPlayed?: () => void;
   onDownload?: () => void;
 }
 
@@ -59,6 +62,7 @@ export function Player(props: Props) {
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [noVideo, setNoVideo] = useState(false);
+  const played = useRef(false);
   const open = props.expanded && !!track;
   const showArt = !!track && (track.audioOnly || noVideo);
 
@@ -66,6 +70,7 @@ export function Player(props: Props) {
     setTime(0);
     setDuration(0);
     setNoVideo(false);
+    played.current = false;
   }, [track?.key]);
 
   useEffect(() => {
@@ -80,6 +85,12 @@ export function Player(props: Props) {
 
   const latest = useRef(props);
   latest.current = props;
+
+  function countPlay() {
+    if (played.current) return;
+    played.current = true;
+    props.onPlayed?.();
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -213,12 +224,18 @@ export function Player(props: Props) {
                 onDoubleClick={() => video.current?.requestFullscreen()}
                 onPlay={() => setPaused(false)}
                 onPause={() => setPaused(true)}
-                onTimeUpdate={(e) => setTime(e.currentTarget.currentTime)}
+                onTimeUpdate={(e) => {
+                  setTime(e.currentTarget.currentTime);
+                  if (e.currentTarget.currentTime >= PLAYED_SECONDS) countPlay();
+                }}
                 onLoadedMetadata={(e) => {
                   setDuration(e.currentTarget.duration);
                   setNoVideo(e.currentTarget.videoWidth === 0);
                 }}
-                onEnded={props.onEnded}
+                onEnded={() => {
+                  countPlay();
+                  props.onEnded();
+                }}
               />
             )}
             {showArt && <img className="artwork" src={track.artwork} alt="" />}

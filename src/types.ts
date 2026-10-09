@@ -8,6 +8,8 @@ export interface Song {
   thumbnail: string;
   addedAt: number;
   gain?: number;
+  plays: number;
+  lastPlayed?: number;
 }
 
 export interface Playlist {

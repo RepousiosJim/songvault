@@ -18,6 +18,10 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Manager, State};
 
+fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
+}
+
 /// Lock `library` before `settings` when holding both.
 struct AppState {
     config_path: PathBuf,
@@ -109,7 +113,7 @@ async fn change_library_dir(app: AppHandle, path: String, move_songs: bool) -> R
 fn download(app: AppHandle, job_id: String, url: String) {
     thread::spawn(move || {
         let state = app.state::<AppState>();
-        let added_at = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64;
+        let added_at = now_ms();
         let settings = state.settings.lock().unwrap().clone();
         let result = ytdlp::run(&settings, &url, added_at, |percent| {
             let _ = app.emit("download-progress", json!({ "jobId": job_id, "percent": percent }));
@@ -182,6 +186,14 @@ fn edit_song(state: State<AppState>, id: String, title: String, artist: String) 
         song.artist = Some(artist).filter(|a| !a.is_empty());
     }
     save(&state, &library)
+}
+
+#[tauri::command]
+fn record_play(state: State<AppState>, id: String) -> Result<Song, String> {
+    let mut library = state.library.lock().unwrap();
+    let song = library.record_play(&id, now_ms()).ok_or("song not found")?;
+    save(&state, &library)?;
+    Ok(song)
 }
 
 #[tauri::command]
@@ -325,6 +337,7 @@ pub fn run() {
             download,
             delete_song,
             edit_song,
+            record_play,
             reveal_song,
             open_youtube,
             save_playlists,
