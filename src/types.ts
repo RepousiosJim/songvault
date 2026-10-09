@@ -2,6 +2,7 @@ export interface Song {
   id: string;
   title: string;
   channel: string;
+  artist?: string;
   duration: number;
   file: string;
   thumbnail: string;

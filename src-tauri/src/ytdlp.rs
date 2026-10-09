@@ -148,6 +148,7 @@ pub fn parse_song(line: &str, added_at: u64) -> Option<Song> {
         id: raw.id,
         title: raw.title,
         channel: raw.channel.or(raw.uploader).unwrap_or_default(),
+        artist: None,
         duration: raw.duration.unwrap_or(0.0).round() as u64,
         file,
         thumbnail: raw.thumbnail.unwrap_or_default(),

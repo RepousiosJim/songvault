@@ -147,6 +147,16 @@ fn delete_song(state: State<AppState>, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn edit_song(state: State<AppState>, id: String, title: String, artist: String) -> Result<(), String> {
+    let mut library = state.library.lock().unwrap();
+    if let Some(song) = library.songs.iter_mut().find(|s| s.id == id) {
+        song.title = title;
+        song.artist = Some(artist).filter(|a| !a.is_empty());
+    }
+    save(&state, &library)
+}
+
+#[tauri::command]
 fn tools_ready(state: State<AppState>) -> bool {
     tools::ready(&state.bin)
 }
@@ -225,6 +235,7 @@ pub fn run() {
             change_library_dir,
             download,
             delete_song,
+            edit_song,
             save_playlists,
             tools_ready,
             install_tools,

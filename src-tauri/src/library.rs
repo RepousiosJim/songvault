@@ -9,6 +9,8 @@ pub struct Song {
     pub id: String,
     pub title: String,
     pub channel: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artist: Option<String>,
     pub duration: u64,
     pub file: String,
     pub thumbnail: String,
@@ -88,6 +90,7 @@ mod tests {
             id: id.into(),
             title: id.into(),
             channel: String::new(),
+            artist: None,
             duration: 1,
             file: file.into(),
             thumbnail: String::new(),
@@ -105,6 +108,13 @@ mod tests {
         };
         library.save(dir).unwrap();
         library
+    }
+
+    #[test]
+    fn songs_saved_before_artists_existed_still_load() {
+        let json = r#"{"songs":[{"id":"a","title":"A","channel":"C","duration":1,"file":"a.mp4","thumbnail":"","addedAt":0}],"playlists":[]}"#;
+        let library: Library = serde_json::from_str(json).unwrap();
+        assert_eq!(library.songs[0].artist, None);
     }
 
     #[test]

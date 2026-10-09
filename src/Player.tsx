@@ -11,6 +11,7 @@ import {
   IconVolume,
   IconVolumeOff,
 } from "@tabler/icons-react";
+import { artistOf, cleanTitle } from "./songs";
 import type { Song } from "./types";
 
 export interface Track {
@@ -22,6 +23,9 @@ export interface Track {
   artist?: string;
   status?: string;
 }
+
+export const isTyping = (target: EventTarget | null) =>
+  target instanceof HTMLElement && !!target.closest("input:not([type=range]), textarea, select");
 
 export function formatDuration(secs: number) {
   const s = Math.floor(secs);
@@ -188,8 +192,8 @@ export function Player(props: Props) {
               <button key={s.id} className="up-next-row" onClick={() => props.onPick(s)}>
                 <img src={s.thumbnail} alt="" />
                 <span className="meta">
-                  <span className="title">{s.title}</span>
-                  <span className="channel">{s.channel}</span>
+                  <span className="title">{cleanTitle(s.title)}</span>
+                  <span className="channel">{artistOf(s)}</span>
                 </span>
               </button>
             ))}

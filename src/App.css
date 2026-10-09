@@ -404,6 +404,7 @@ button.icon.on {
 }
 
 .song {
+  position: relative;
   display: grid;
   grid-template-columns: 72px minmax(0, 1fr) 44px 96px;
   align-items: center;
@@ -433,6 +434,65 @@ button.icon.on {
   object-fit: cover;
   border-radius: 6px;
   background: var(--raised);
+}
+
+.pick {
+  position: absolute;
+  top: 50%;
+  left: 18px;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0;
+  padding: 0;
+  accent-color: var(--accent);
+  visibility: hidden;
+}
+
+.song:hover .pick,
+.song.picked .pick {
+  visibility: visible;
+}
+
+.song.picked {
+  background: var(--raised);
+}
+
+.meta.edit input {
+  padding: 2px 8px;
+}
+
+.bulk {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 20px 8px;
+  padding: 6px 12px;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.bulk > span:first-child {
+  margin-right: auto;
+}
+
+.bulk button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bulk-add {
+  position: relative;
+}
+
+.bulk-add .menu {
+  right: auto;
+  left: 0;
+}
+
+.sort {
+  padding: 5px 10px;
 }
 
 .meta {

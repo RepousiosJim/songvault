@@ -19,7 +19,8 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import type { Job, LibraryView, Playlist, Preview, Quality, SearchResult, Settings, Song } from "./types";
-import { formatDuration, Player, type Track } from "./Player";
+import { artistOf, cleanTitle } from "./songs";
+import { formatDuration, isTyping, Player, type Track } from "./Player";
 import { Setup } from "./Setup";
 import "./App.css";
 
@@ -32,6 +33,17 @@ const thumbnailUrl = (id: string) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg
 const artworkUrl = (id: string) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
 const isLink = (text: string) => /^https?:\/\/|youtu\.?be/i.test(text);
 const isSong = (r: SearchResult) => r.duration > 0 && r.duration < 600;
+
+type SortKey = "added" | "title" | "artist" | "length";
+
+const SORTS: Record<SortKey, [label: string, compare: (a: Song, b: Song) => number]> = {
+  added: ["Date added", (a, b) => b.addedAt - a.addedAt],
+  title: ["Title", (a, b) => cleanTitle(a.title).localeCompare(cleanTitle(b.title))],
+  artist: ["Artist", (a, b) => artistOf(a).localeCompare(artistOf(b))],
+  length: ["Length", (a, b) => a.duration - b.duration],
+};
+
+const BULK = "bulk";
 
 function totalLength(songs: Song[]) {
   const mins = Math.round(songs.reduce((sum, s) => sum + s.duration, 0) / 60);
@@ -64,6 +76,10 @@ function App() {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortKey>("added");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const anchor = useRef<number | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [justAdded, setJustAdded] = useState<Song[]>([]);
   const [toolsReady, setToolsReady] = useState<boolean | null>(null);
   const [ytdlp, setYtdlp] = useState("");
@@ -131,7 +147,20 @@ function App() {
     };
   }, []);
 
-  useEffect(() => setExpanded(false), [view]);
+  useEffect(() => {
+    setExpanded(false);
+    setSelected(new Set());
+  }, [view]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape" || isTyping(e.target)) return;
+      if (menuFor) setMenuFor(null);
+      else setSelected(new Set());
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   useEffect(() => {
     if (toolsReady) invoke<string>("ytdlp_version").then(setYtdlp, (e) => setYtdlp(String(e)));
@@ -181,9 +210,9 @@ function App() {
     }
     const q = filter.trim().toLowerCase();
     return [...songs]
-      .sort((a, b) => b.addedAt - a.addedAt)
-      .filter((s) => !q || s.title.toLowerCase().includes(q) || s.channel.toLowerCase().includes(q));
-  }, [songs, playlist, filter]);
+      .sort(SORTS[sort][1])
+      .filter((s) => !q || cleanTitle(s.title).toLowerCase().includes(q) || artistOf(s).toLowerCase().includes(q));
+  }, [songs, playlist, filter, sort]);
 
   const queueIndex = queue.findIndex((s) => s.id === playingId);
   const playing = queue[queueIndex];
@@ -268,7 +297,7 @@ function App() {
   function fileJustAdded(song: Song, target: { playlistId: string } | { newName: string } | null) {
     setJustAdded((a) => a.filter((s) => s.id !== song.id));
     if (!target) return;
-    if ("playlistId" in target) return addToPlaylist(target.playlistId, song.id);
+    if ("playlistId" in target) return addToPlaylist(target.playlistId, [song.id]);
     savePlaylists([...playlists, { id: crypto.randomUUID(), name: target.newName, songIds: [song.id] }]);
   }
 
@@ -284,11 +313,11 @@ function App() {
     setView(LIBRARY);
   }
 
-  function addToPlaylist(playlistId: string, songId: string) {
+  function addToPlaylist(playlistId: string, ids: string[]) {
     setMenuFor(null);
     savePlaylists(
       playlists.map((p) =>
-        p.id === playlistId && !p.songIds.includes(songId) ? { ...p, songIds: [...p.songIds, songId] } : p,
+        p.id === playlistId ? { ...p, songIds: [...p.songIds, ...ids.filter((id) => !p.songIds.includes(id))] } : p,
       ),
     );
   }
@@ -305,13 +334,40 @@ function App() {
     });
   }
 
-  async function deleteSong(song: Song) {
-    if (!window.confirm(`Delete "${song.title}" from disk?`)) return;
-    await invoke("delete_song", { id: song.id });
-    setSongs((ss) => ss.filter((s) => s.id !== song.id));
-    setPlaylists((ps) => ps.map((p) => ({ ...p, songIds: p.songIds.filter((id) => id !== song.id) })));
-    setQueue((q) => q.filter((s) => s.id !== song.id));
-    if (playingId === song.id) setPlayingId(null);
+  async function deleteSongs(targets: Song[]) {
+    const what = targets.length === 1 ? `"${cleanTitle(targets[0].title)}"` : `${targets.length} songs`;
+    if (!window.confirm(`Delete ${what} from disk?`)) return;
+    const ids = targets.map((s) => s.id);
+    for (const id of ids) await invoke("delete_song", { id });
+    setSongs((ss) => ss.filter((s) => !ids.includes(s.id)));
+    setPlaylists((ps) => ps.map((p) => ({ ...p, songIds: p.songIds.filter((id) => !ids.includes(id)) })));
+    setQueue((q) => q.filter((s) => !ids.includes(s.id)));
+    if (playingId && ids.includes(playingId)) setPlayingId(null);
+    setSelected(new Set());
+  }
+
+  function editSong(song: Song, edit: { title: string; artist: string } | null) {
+    setEditingId(null);
+    if (!edit) return;
+    const patch = (s: Song) => (s.id === song.id ? { ...s, title: edit.title, artist: edit.artist || undefined } : s);
+    setSongs((ss) => ss.map(patch));
+    setQueue((q) => q.map(patch));
+    invoke("edit_song", { id: song.id, title: edit.title, artist: edit.artist });
+  }
+
+  function pick(i: number, range: boolean) {
+    if (range && anchor.current !== null) {
+      const [lo, hi] = [anchor.current, i].sort((a, b) => a - b);
+      setSelected(new Set(visible.slice(lo, hi + 1).map((s) => s.id)));
+      return;
+    }
+    anchor.current = i;
+    const id = visible[i].id;
+    setSelected((sel) => {
+      const next = new Set(sel);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
   }
 
   function play(song: Song) {
@@ -339,7 +395,7 @@ function App() {
         src: preview.url,
         artwork: artworkUrl(preview.id),
         audioOnly: true,
-        title: preview.title,
+        title: cleanTitle(preview.title),
         status: preview.error ?? (preview.url ? "Preview" : "Loading preview…"),
       }
     : playing
@@ -348,8 +404,8 @@ function App() {
           src: convertFileSrc(`${dir}\\${playing.file}`),
           artwork: artworkUrl(playing.id),
           audioOnly: playing.file.endsWith(".m4a"),
-          title: playing.title,
-          artist: playing.channel,
+          title: cleanTitle(playing.title),
+          artist: artistOf(playing),
         }
       : null;
   const previewDownloadable =
@@ -586,14 +642,43 @@ function App() {
                   : `${visible.length} ${visible.length === 1 ? "song" : "songs"} · ${totalLength(visible)}`}
               </span>
               {view === LIBRARY && (
-                <input
-                  className="filter"
-                  value={filter}
-                  placeholder="Filter"
-                  onChange={(e) => setFilter(e.target.value)}
-                />
+                <>
+                  <input
+                    className="filter"
+                    value={filter}
+                    placeholder="Filter"
+                    onChange={(e) => setFilter(e.target.value)}
+                  />
+                  <select className="sort" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+                    {Object.entries(SORTS).map(([key, [label]]) => (
+                      <option key={key} value={key}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </>
               )}
             </div>
+            {selected.size > 0 && (
+              <div className="bulk" onClick={(e) => e.stopPropagation()}>
+                <span>{selected.size} selected</span>
+                <span className="bulk-add">
+                  <button onClick={() => setMenuFor(menuFor === BULK ? null : BULK)}>
+                    <IconPlaylistAdd size={16} /> Add to playlist
+                  </button>
+                  {menuFor === BULK && (
+                    <PlaylistMenu
+                      playlists={playlists}
+                      ids={[...selected]}
+                      onPick={(playlistId) => addToPlaylist(playlistId, [...selected])}
+                    />
+                  )}
+                </span>
+                <button onClick={() => deleteSongs(songs.filter((s) => selected.has(s.id)))}>
+                  <IconTrash size={16} /> Delete
+                </button>
+              </div>
+            )}
             {view === SEARCH && results.length > 0 && (
               <div className="chips">
                 <button className={songsOnly ? "chip on" : "chip"} onClick={() => setSongsOnly(true)}>
@@ -625,7 +710,7 @@ function App() {
                       >
                         <img src={thumbnailUrl(r.id)} alt="" />
                         <span className="meta">
-                          <span className="title">{r.title}</span>
+                          <span className="title">{cleanTitle(r.title)}</span>
                           <span className="channel">{r.channel}</span>
                           {active && (
                             <span className="row-progress">
@@ -664,8 +749,8 @@ function App() {
                 : visible.map((song, i) => (
                     <li
                       key={song.id}
-                      className={song.id === playingId ? "song playing" : "song"}
-                      draggable={!!playlist}
+                      className={`song${song.id === playingId ? " playing" : ""}${selected.has(song.id) ? " picked" : ""}`}
+                      draggable={!!playlist && editingId !== song.id}
                       onDragStart={() => setDragIndex(i)}
                       onDragOver={(e) => dragIndex !== null && e.preventDefault()}
                       onDrop={() => {
@@ -673,13 +758,28 @@ function App() {
                         setDragIndex(null);
                       }}
                       onDragEnd={() => setDragIndex(null)}
-                      onClick={() => play(song)}
+                      onClick={(e) => (e.ctrlKey || e.shiftKey ? pick(i, e.shiftKey) : play(song))}
                     >
                       <img src={song.thumbnail} alt="" />
-                      <span className="meta">
-                        <span className="title">{song.title}</span>
-                        <span className="channel">{song.channel}</span>
-                      </span>
+                      <input
+                        className="pick"
+                        type="checkbox"
+                        aria-label="Select"
+                        checked={selected.has(song.id)}
+                        readOnly
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          pick(i, e.shiftKey);
+                        }}
+                      />
+                      {editingId === song.id ? (
+                        <EditSong song={song} onDone={(edit) => editSong(song, edit)} />
+                      ) : (
+                        <span className="meta">
+                          <span className="title">{cleanTitle(song.title)}</span>
+                          <span className="channel">{artistOf(song)}</span>
+                        </span>
+                      )}
                       <span className="duration">
                         {song.id === playingId ? <IconVolume size={16} /> : formatDuration(song.duration)}
                       </span>
@@ -687,6 +787,9 @@ function App() {
                         className={menuFor === song.id ? "actions always" : "actions"}
                         onClick={(e) => e.stopPropagation()}
                       >
+                        <button className="icon" aria-label="Edit" onClick={() => setEditingId(song.id)}>
+                          <IconPencil size={16} />
+                        </button>
                         {playlist ? (
                           <button
                             className="icon"
@@ -704,22 +807,15 @@ function App() {
                             >
                               <IconPlaylistAdd size={18} />
                             </button>
-                            <button className="icon" aria-label="Delete" onClick={() => deleteSong(song)}>
+                            <button className="icon" aria-label="Delete" onClick={() => deleteSongs([song])}>
                               <IconTrash size={16} />
                             </button>
                             {menuFor === song.id && (
-                              <ul className="menu">
-                                {playlists.length === 0 && <li className="disabled">No playlists</li>}
-                                {playlists.map((p) => (
-                                  <li
-                                    key={p.id}
-                                    className={p.songIds.includes(song.id) ? "disabled" : undefined}
-                                    onClick={() => addToPlaylist(p.id, song.id)}
-                                  >
-                                    {p.name}
-                                  </li>
-                                ))}
-                              </ul>
+                              <PlaylistMenu
+                                playlists={playlists}
+                                ids={[song.id]}
+                                onPick={(playlistId) => addToPlaylist(playlistId, [song.id])}
+                              />
                             )}
                           </>
                         )}
@@ -787,8 +883,8 @@ function PlaylistPrompt({
             <IconX size={16} />
           </button>
         </div>
-        <div className="prompt-title">{song.title}</div>
-        <div className="prompt-channel">{song.channel}</div>
+        <div className="prompt-title">{cleanTitle(song.title)}</div>
+        <div className="prompt-channel">{artistOf(song)}</div>
         <div className="prompt-label">Add to playlist</div>
         <div className="prompt-chips">
           {playlists.map((p) => (
@@ -819,6 +915,59 @@ function PlaylistPrompt({
         </div>
       </div>
     </div>
+  );
+}
+
+function PlaylistMenu({
+  playlists,
+  ids,
+  onPick,
+}: {
+  playlists: Playlist[];
+  ids: string[];
+  onPick: (playlistId: string) => void;
+}) {
+  return (
+    <ul className="menu">
+      {playlists.length === 0 && <li className="disabled">No playlists</li>}
+      {playlists.map((p) => (
+        <li
+          key={p.id}
+          className={ids.every((id) => p.songIds.includes(id)) ? "disabled" : undefined}
+          onClick={() => onPick(p.id)}
+        >
+          {p.name}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function EditSong({ song, onDone }: { song: Song; onDone: (edit: { title: string; artist: string } | null) => void }) {
+  const form = useRef<HTMLSpanElement>(null);
+  const settled = useRef(false);
+
+  function finish(save: boolean) {
+    if (settled.current) return;
+    settled.current = true;
+    const [title, artist] = Array.from(form.current!.querySelectorAll("input"), (i) => i.value.trim());
+    onDone(save && title ? { title, artist } : null);
+  }
+
+  return (
+    <span
+      ref={form}
+      className="meta edit"
+      onClick={(e) => e.stopPropagation()}
+      onBlur={(e) => e.currentTarget.contains(e.relatedTarget) || finish(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") finish(true);
+        if (e.key === "Escape") finish(false);
+      }}
+    >
+      <input autoFocus defaultValue={cleanTitle(song.title)} placeholder="Title" />
+      <input defaultValue={artistOf(song)} placeholder="Artist" />
+    </span>
   );
 }
 
