@@ -918,7 +918,7 @@ function App() {
                       : results.length > 0 &&
                       (shownResults.length < results.length
                         ? `${shownResults.length} songs · ${results.length - shownResults.length} hidden`
-                        : `${results.length} results`)
+                        : `${results.length} ${results.length === 1 ? "result" : "results"}`)
                   : `${visible.length} ${visible.length === 1 ? "song" : "songs"} · ${totalLength(visible)}`}
               </span>
               {view === SEARCH && importable && (
