@@ -157,6 +157,27 @@ fn edit_song(state: State<AppState>, id: String, title: String, artist: String) 
 }
 
 #[tauri::command]
+fn reveal_song(state: State<AppState>, id: String) -> Result<(), String> {
+    let library = state.library.lock().unwrap();
+    let song = library.songs.iter().find(|s| s.id == id).ok_or("song not found")?;
+    ytdlp::hidden("explorer.exe")
+        .arg("/select,")
+        .arg(state.dir().join(&song.file))
+        .spawn()
+        .map(drop)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn open_youtube(id: String) -> Result<(), String> {
+    ytdlp::hidden("explorer.exe")
+        .arg(format!("https://www.youtube.com/watch?v={id}"))
+        .spawn()
+        .map(drop)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn tools_ready(state: State<AppState>) -> bool {
     tools::ready(&state.bin)
 }
@@ -236,6 +257,8 @@ pub fn run() {
             download,
             delete_song,
             edit_song,
+            reveal_song,
+            open_youtube,
             save_playlists,
             tools_ready,
             install_tools,

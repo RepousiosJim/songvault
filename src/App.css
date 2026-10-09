@@ -289,6 +289,11 @@ button.icon.on {
   color: var(--accent);
 }
 
+.nav.drop {
+  outline: 1px dashed var(--accent);
+  outline-offset: -1px;
+}
+
 .nav-label {
   flex: 1;
   min-width: 0;
@@ -579,12 +584,52 @@ button.icon.on {
 }
 
 .menu li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 7px 10px;
   border-radius: 6px;
 }
 
 .menu li:hover:not(.disabled) {
   background: var(--hover);
+}
+
+.menu li.nested {
+  padding-left: 32px;
+}
+
+.menu .chevron {
+  margin-left: auto;
+}
+
+.ctx {
+  position: fixed;
+  right: auto;
+  z-index: 40;
+}
+
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 84px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+.toast .link {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .menu li.disabled {

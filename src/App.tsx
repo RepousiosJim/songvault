@@ -4,10 +4,14 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   IconBrandYoutube,
+  IconChevronRight,
   IconCircleCheckFilled,
   IconDownload,
+  IconExternalLink,
+  IconFolder,
   IconMusic,
   IconPencil,
+  IconPlayerTrackNext,
   IconPlaylist,
   IconPlaylistAdd,
   IconPlus,
@@ -61,7 +65,8 @@ function shuffled<T>(items: T[]) {
 
 function App() {
   const [dir, setDir] = useState("");
-  const [songs, setSongs] = useState<Song[]>([]);
+  const [allSongs, setAllSongs] = useState<Song[]>([]);
+  const [pending, setPending] = useState<{ ids: string[]; timer: number } | null>(null);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [showJobs, setShowJobs] = useState(false);
@@ -75,6 +80,9 @@ function App() {
   const [creating, setCreating] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragIds, setDragIds] = useState<string[] | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [ctx, setCtx] = useState<{ x: number; y: number; song: Song; sub: boolean } | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [sort, setSort] = useState<SortKey>("added");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -130,7 +138,7 @@ function App() {
       listen<{ jobId: string; song: Song }>("download-done", ({ payload }) => {
         setJobs((js) => js.filter((j) => j.id !== payload.jobId));
         setJustAdded((a) => [...a.filter((s) => s.id !== payload.song.id), payload.song]);
-        setSongs((ss) =>
+        setAllSongs((ss) =>
           ss.some((s) => s.id === payload.song.id)
             ? ss.map((s) => (s.id === payload.song.id ? payload.song : s))
             : [...ss, payload.song],
@@ -154,9 +162,20 @@ function App() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== "Escape" || isTyping(e.target)) return;
-      if (menuFor) setMenuFor(null);
-      else setSelected(new Set());
+      if (e.ctrlKey && e.key === "f") {
+        e.preventDefault();
+        fieldRef.current?.focus();
+        fieldRef.current?.select();
+      }
+      if (isTyping(e.target)) return;
+      if (e.key === "Escape") {
+        if (ctx || menuFor) {
+          setCtx(null);
+          setMenuFor(null);
+        } else if (expanded) setExpanded(false);
+        else setSelected(new Set());
+      }
+      if (e.key === "Delete" && selected.size) deleteSongs([...selected]);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -168,7 +187,7 @@ function App() {
 
   function applyLibrary(lib: LibraryView) {
     setDir(lib.dir);
-    setSongs(lib.songs);
+    setAllSongs(lib.songs);
     setPlaylists(lib.playlists);
   }
 
@@ -201,6 +220,7 @@ function App() {
     setMoving(false);
   }
 
+  const songs = useMemo(() => allSongs.filter((s) => !pending?.ids.includes(s.id)), [allSongs, pending]);
   const playlist = playlists.find((p) => p.id === view);
 
   const visible = useMemo(() => {
@@ -214,6 +234,7 @@ function App() {
       .filter((s) => !q || cleanTitle(s.title).toLowerCase().includes(q) || artistOf(s).toLowerCase().includes(q));
   }, [songs, playlist, filter, sort]);
 
+  const ctxIds = ctx ? (selected.has(ctx.song.id) ? [...selected] : [ctx.song.id]) : [];
   const queueIndex = queue.findIndex((s) => s.id === playingId);
   const playing = queue[queueIndex];
   const activeJobs = jobs.filter((j) => !j.error);
@@ -334,23 +355,36 @@ function App() {
     });
   }
 
-  async function deleteSongs(targets: Song[]) {
-    const what = targets.length === 1 ? `"${cleanTitle(targets[0].title)}"` : `${targets.length} songs`;
-    if (!window.confirm(`Delete ${what} from disk?`)) return;
-    const ids = targets.map((s) => s.id);
-    for (const id of ids) await invoke("delete_song", { id });
-    setSongs((ss) => ss.filter((s) => !ids.includes(s.id)));
-    setPlaylists((ps) => ps.map((p) => ({ ...p, songIds: p.songIds.filter((id) => !ids.includes(id)) })));
+  function deleteSongs(ids: string[]) {
+    if (pending) clearTimeout(pending.timer);
+    const all = [...(pending?.ids ?? []), ...ids];
+    setPending({ ids: all, timer: window.setTimeout(() => commitDelete(all), 5000) });
     setQueue((q) => q.filter((s) => !ids.includes(s.id)));
     if (playingId && ids.includes(playingId)) setPlayingId(null);
     setSelected(new Set());
+  }
+
+  function commitDelete(ids: string[]) {
+    Promise.allSettled(
+      ids.map((id) =>
+        invoke("delete_song", { id }).then(() => {
+          setAllSongs((ss) => ss.filter((s) => s.id !== id));
+          setPlaylists((ps) => ps.map((p) => ({ ...p, songIds: p.songIds.filter((x) => x !== id) })));
+        }),
+      ),
+    ).then(() => setPending(null));
+  }
+
+  function undoDelete() {
+    if (pending) clearTimeout(pending.timer);
+    setPending(null);
   }
 
   function editSong(song: Song, edit: { title: string; artist: string } | null) {
     setEditingId(null);
     if (!edit) return;
     const patch = (s: Song) => (s.id === song.id ? { ...s, title: edit.title, artist: edit.artist || undefined } : s);
-    setSongs((ss) => ss.map(patch));
+    setAllSongs((ss) => ss.map(patch));
     setQueue((q) => q.map(patch));
     invoke("edit_song", { id: song.id, title: edit.title, artist: edit.artist });
   }
@@ -375,6 +409,16 @@ function App() {
     setPreview(null);
     setQueue(shuffle ? [song, ...shuffled(visible.filter((s) => s.id !== song.id))] : visible);
     setPlayingId(song.id);
+  }
+
+  function playNext(song: Song) {
+    if (!playing) return play(song);
+    if (song.id === playing.id) return;
+    setQueue((q) => {
+      const rest = q.filter((s) => s.id !== song.id);
+      rest.splice(rest.findIndex((s) => s.id === playing.id) + 1, 0, song);
+      return rest;
+    });
   }
 
   function toggleShuffle() {
@@ -417,7 +461,14 @@ function App() {
   if (toolsReady === false) return <Setup onReady={() => setToolsReady(true)} />;
 
   return (
-    <div className="app" onClick={() => setMenuFor(null)}>
+    <div
+      className="app"
+      onClick={() => {
+        setMenuFor(null);
+        setCtx(null);
+      }}
+      onContextMenu={() => setCtx(null)}
+    >
       <header className="topbar">
         <div className="field">
           <IconSearch size={16} />
@@ -536,7 +587,21 @@ function App() {
           renamingId === p.id ? (
             <NameInput key={p.id} initial={p.name} onDone={(name) => renamePlaylist(p.id, name)} />
           ) : (
-            <div key={p.id} className={view === p.id ? "nav playlist active" : "nav playlist"} onClick={() => setView(p.id)}>
+            <div
+              key={p.id}
+              className={`nav playlist${view === p.id ? " active" : ""}${dropTarget === p.id ? " drop" : ""}`}
+              onClick={() => setView(p.id)}
+              onDragOver={(e) => {
+                if (!dragIds) return;
+                e.preventDefault();
+                setDropTarget(p.id);
+              }}
+              onDragLeave={(e) => e.currentTarget.contains(e.relatedTarget as Node) || setDropTarget(null)}
+              onDrop={() => {
+                if (dragIds) addToPlaylist(p.id, dragIds);
+                setDropTarget(null);
+              }}
+            >
               <IconPlaylist size={18} />
               <span className="nav-label">{p.name}</span>
               {view === p.id ? (
@@ -667,14 +732,16 @@ function App() {
                     <IconPlaylistAdd size={16} /> Add to playlist
                   </button>
                   {menuFor === BULK && (
-                    <PlaylistMenu
-                      playlists={playlists}
-                      ids={[...selected]}
-                      onPick={(playlistId) => addToPlaylist(playlistId, [...selected])}
-                    />
+                    <ul className="menu">
+                      <PlaylistItems
+                        playlists={playlists}
+                        ids={[...selected]}
+                        onPick={(playlistId) => addToPlaylist(playlistId, [...selected])}
+                      />
+                    </ul>
                   )}
                 </span>
-                <button onClick={() => deleteSongs(songs.filter((s) => selected.has(s.id)))}>
+                <button onClick={() => deleteSongs([...selected])}>
                   <IconTrash size={16} /> Delete
                 </button>
               </div>
@@ -750,14 +817,29 @@ function App() {
                     <li
                       key={song.id}
                       className={`song${song.id === playingId ? " playing" : ""}${selected.has(song.id) ? " picked" : ""}`}
-                      draggable={!!playlist && editingId !== song.id}
-                      onDragStart={() => setDragIndex(i)}
+                      draggable={editingId !== song.id}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setMenuFor(null);
+                        setCtx({ x: e.clientX, y: e.clientY, song, sub: false });
+                      }}
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = "copyMove";
+                        e.dataTransfer.setData("text/plain", song.id);
+                        setDragIds(selected.has(song.id) ? [...selected] : [song.id]);
+                        if (playlist) setDragIndex(i);
+                      }}
                       onDragOver={(e) => dragIndex !== null && e.preventDefault()}
                       onDrop={() => {
                         if (dragIndex !== null && dragIndex !== i) moveSong(dragIndex, i);
                         setDragIndex(null);
                       }}
-                      onDragEnd={() => setDragIndex(null)}
+                      onDragEnd={() => {
+                        setDragIds(null);
+                        setDropTarget(null);
+                        setDragIndex(null);
+                      }}
                       onClick={(e) => (e.ctrlKey || e.shiftKey ? pick(i, e.shiftKey) : play(song))}
                     >
                       <img src={song.thumbnail} alt="" />
@@ -807,15 +889,17 @@ function App() {
                             >
                               <IconPlaylistAdd size={18} />
                             </button>
-                            <button className="icon" aria-label="Delete" onClick={() => deleteSongs([song])}>
+                            <button className="icon" aria-label="Delete" onClick={() => deleteSongs([song.id])}>
                               <IconTrash size={16} />
                             </button>
                             {menuFor === song.id && (
-                              <PlaylistMenu
-                                playlists={playlists}
-                                ids={[song.id]}
-                                onPick={(playlistId) => addToPlaylist(playlistId, [song.id])}
-                              />
+                              <ul className="menu">
+                                <PlaylistItems
+                                  playlists={playlists}
+                                  ids={[song.id]}
+                                  onPick={(playlistId) => addToPlaylist(playlistId, [song.id])}
+                                />
+                              </ul>
                             )}
                           </>
                         )}
@@ -826,6 +910,78 @@ function App() {
           </>
         )}
       </main>
+
+      {ctx && (
+        <ul
+          className="menu ctx"
+          style={{ left: Math.min(ctx.x, innerWidth - 220), top: Math.min(ctx.y, innerHeight - 280) }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <li
+            onClick={() => {
+              playNext(ctx.song);
+              setCtx(null);
+            }}
+          >
+            <IconPlayerTrackNext size={16} /> Play next
+          </li>
+          <li onClick={() => setCtx({ ...ctx, sub: !ctx.sub })}>
+            <IconPlaylistAdd size={16} /> Add to playlist <IconChevronRight size={14} className="chevron" />
+          </li>
+          {ctx.sub && (
+            <PlaylistItems
+              nested
+              playlists={playlists}
+              ids={ctxIds}
+              onPick={(playlistId) => {
+                addToPlaylist(playlistId, ctxIds);
+                setCtx(null);
+              }}
+            />
+          )}
+          <li
+            onClick={() => {
+              setEditingId(ctx.song.id);
+              setCtx(null);
+            }}
+          >
+            <IconPencil size={16} /> Edit title and artist
+          </li>
+          <li
+            onClick={() => {
+              invoke("reveal_song", { id: ctx.song.id });
+              setCtx(null);
+            }}
+          >
+            <IconFolder size={16} /> Show in folder
+          </li>
+          <li
+            onClick={() => {
+              invoke("open_youtube", { id: ctx.song.id });
+              setCtx(null);
+            }}
+          >
+            <IconExternalLink size={16} /> Open on YouTube
+          </li>
+          <li
+            onClick={() => {
+              deleteSongs(ctxIds);
+              setCtx(null);
+            }}
+          >
+            <IconTrash size={16} /> Delete
+          </li>
+        </ul>
+      )}
+
+      {pending && (
+        <div className="toast" onClick={(e) => e.stopPropagation()}>
+          {pending.ids.length === 1 ? "Song deleted" : `${pending.ids.length} songs deleted`} ·
+          <button className="link" onClick={undoDelete}>
+            Undo
+          </button>
+        </div>
+      )}
 
       {justAdded[0] && (
         <PlaylistPrompt
@@ -918,28 +1074,30 @@ function PlaylistPrompt({
   );
 }
 
-function PlaylistMenu({
+function PlaylistItems({
   playlists,
   ids,
+  nested,
   onPick,
 }: {
   playlists: Playlist[];
   ids: string[];
+  nested?: boolean;
   onPick: (playlistId: string) => void;
 }) {
   return (
-    <ul className="menu">
-      {playlists.length === 0 && <li className="disabled">No playlists</li>}
+    <>
+      {playlists.length === 0 && <li className={nested ? "disabled nested" : "disabled"}>No playlists</li>}
       {playlists.map((p) => (
         <li
           key={p.id}
-          className={ids.every((id) => p.songIds.includes(id)) ? "disabled" : undefined}
+          className={[nested && "nested", ids.every((id) => p.songIds.includes(id)) && "disabled"].filter(Boolean).join(" ") || undefined}
           onClick={() => onPick(p.id)}
         >
           {p.name}
         </li>
       ))}
-    </ul>
+    </>
   );
 }
 

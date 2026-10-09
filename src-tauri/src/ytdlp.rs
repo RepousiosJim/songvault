@@ -167,7 +167,7 @@ pub fn last_error(stderr: &str) -> String {
     line.trim_start_matches("ERROR:").trim().to_string()
 }
 
-fn hidden(program: &str) -> Command {
+pub fn hidden(program: &str) -> Command {
     let mut command = Command::new(program);
     command.creation_flags(CREATE_NO_WINDOW);
     command

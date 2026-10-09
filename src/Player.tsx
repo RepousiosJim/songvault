@@ -77,6 +77,46 @@ export function Player(props: Props) {
     v.paused ? v.play() : v.pause();
   }
 
+  const latest = useRef(props);
+  latest.current = props;
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const v = video.current;
+      if (!v || isTyping(e.target) || e.ctrlKey || e.altKey || e.metaKey) return;
+      if (e.key === " ") toggle();
+      else if (e.key === "ArrowLeft") v.currentTime -= 5;
+      else if (e.key === "ArrowRight") v.currentTime += 5;
+      else return;
+      e.preventDefault();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  useEffect(() => {
+    if (!track) return;
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title,
+      artist: track.artist,
+      artwork: [{ src: track.artwork }],
+    });
+  }, [track?.key, track?.title, track?.artist]);
+
+  useEffect(() => {
+    const session = navigator.mediaSession;
+    session.setActionHandler("play", () => video.current?.play());
+    session.setActionHandler("pause", () => video.current?.pause());
+    session.setActionHandler("seekto", (d) => {
+      if (video.current && d.seekTime != null) video.current.currentTime = d.seekTime;
+    });
+  }, []);
+
+  useEffect(() => {
+    navigator.mediaSession.setActionHandler("previoustrack", props.canPrev ? () => latest.current.onPrev() : null);
+    navigator.mediaSession.setActionHandler("nexttrack", props.canNext ? () => latest.current.onNext() : null);
+  }, [props.canPrev, props.canNext]);
+
   const bar = (
     <footer className="player-bar">
       <div className="bar-track">
