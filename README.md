@@ -1,45 +1,110 @@
-# songvault
+<p align="center">
+  <img src="app-icon.svg" width="96" alt="songvault icon">
+</p>
 
-A Windows desktop app that downloads songs from YouTube with [yt-dlp](https://github.com/yt-dlp/yt-dlp) and keeps them in a local library with playlists.
+<h1 align="center">songvault</h1>
+
+<p align="center">
+  A Windows desktop app that downloads songs from YouTube and keeps them in a local library with playlists.
+</p>
+
+<p align="center">
+  <a href="https://github.com/RepousiosJim/songvault/releases/latest"><b>Download for Windows</b></a>
+  ·
+  <a href="#build-from-source">Build from source</a>
+  ·
+  <a href="LICENSE">MIT license</a>
+</p>
 
 | Search | Settings |
 | --- | --- |
-| ![Search](docs/search.png) | ![Settings](docs/settings.png) |
+| ![Search results for a YouTube query](docs/search.png) | ![Settings page](docs/settings.png) |
 
 ## Features
 
-- Paste a YouTube link to download it as MP4, or as M4A audio only.
-- Search YouTube from the same field, with as-you-type suggestions, and preview a result before downloading.
-- Pick a playlist for each song once it finishes downloading.
-- Playlists can be reordered by drag and drop.
-- Built-in player with shuffle, repeat, volume and an up-next queue.
-- Settings: library folder (move existing songs or not), quality cap, audio only, number of search results.
-- Update yt-dlp from Settings. Failed downloads keep the full yt-dlp log.
+**Download**
+- Paste a YouTube link to save it as MP4 video, or as M4A when Audio only is on.
+- Cap video quality at 1080p, 720p or 480p to save space.
+- A progress pill tracks every download. If a download fails, you can open yt-dlp's full log.
 
-## Requirements
+**Search**
+- Search YouTube from the same field, with suggestions as you type. Searches in any language and script work, including Cyrillic and Greek.
+- Preview a result's audio before downloading it.
 
-Windows 10 or 11. On first launch songvault downloads [yt-dlp](https://github.com/yt-dlp/yt-dlp), [ffmpeg](https://github.com/yt-dlp/FFmpeg-Builds) and [Deno](https://deno.com) (about 150 MB in total) into `%LOCALAPPDATA%\com.gemelon.songvault\bin`. Nothing else needs installing.
+**Library and playlists**
+- After each download, pick a playlist for the song or create a new one.
+- Rename playlists and drag songs to reorder them.
+- Filter the library by title or channel.
+
+**Player**
+- Built-in player with seek, shuffle, repeat, volume and an up-next queue.
+- Double-click the video for fullscreen.
 
 ## Install
 
-Download `songvault_<version>_x64-setup.exe` from [Releases](https://github.com/RepousiosJim/songvault/releases) and run it. It installs per user and needs no admin rights. The installer is unsigned, so SmartScreen may warn on first run.
+1. Download `songvault_<version>_x64-setup.exe` from [Releases](https://github.com/RepousiosJim/songvault/releases/latest).
+2. Run it. It installs for your user account only and needs no admin rights.
+3. Windows SmartScreen may show "Windows protected your PC" because the installer is not code-signed. Choose **More info**, then **Run anyway**.
 
-Songs are stored in `Music\songvault` by default. Change the folder in Settings.
+On first launch songvault downloads the tools it runs on: yt-dlp, ffmpeg and Deno. They total about 150 MB and are downloaded once. Nothing else needs installing.
+
+Requires Windows 10 or 11, 64-bit.
+
+## Settings
+
+| Setting | Default | Notes |
+| --- | --- | --- |
+| Library folder | `Music\songvault` | When you change it, choose whether to move your songs or start with the library in the new folder. |
+| Quality | Best | Highest video height to download. |
+| Audio only | Off | Saves M4A audio instead of MP4 video. |
+| Search results | 20 | Number of results per search. |
+| yt-dlp | — | Shows the version. **Update** runs yt-dlp's own updater. Update when downloads start failing, since YouTube changes often. |
+
+## Where files live
+
+| What | Location |
+| --- | --- |
+| Songs and `library.json` (songs and playlists) | The library folder, `Music\songvault` by default |
+| Settings | `%APPDATA%\com.gemelon.songvault\settings.json` |
+| yt-dlp, ffmpeg, Deno | `%LOCALAPPDATA%\com.gemelon.songvault\bin` |
+
+Songs are plain media files named by video ID, so any player can open them. To move to another PC, copy the library folder, then select it in Settings.
+
+## Troubleshooting
+
+| Problem | Fix |
+| --- | --- |
+| Downloads or search fail | Settings → yt-dlp → **Update**. Open the failed download in the progress pill to read the full log. |
+| First-launch setup fails | Check your internet connection and choose **Retry**. Setup resumes with whatever is still missing. |
+| Tools seem broken | Close songvault, delete the `bin` folder above, and start songvault again to download fresh copies. |
 
 ## Build from source
 
-Needs [Rust](https://rustup.rs), Node.js 20+ and pnpm.
+Requires [Rust](https://rustup.rs), [Node.js](https://nodejs.org) 20+ and [pnpm](https://pnpm.io).
 
 ```powershell
+git clone https://github.com/RepousiosJim/songvault.git
+cd songvault
 pnpm install
-pnpm tauri dev      # run in development
+pnpm tauri dev      # run with hot reload
 pnpm tauri build    # installer in src-tauri/target/release/bundle/nsis
-cd src-tauri; cargo test
 ```
+
+Run the Rust tests with `cargo test` in `src-tauri`.
+
+| Path | Contents |
+| --- | --- |
+| `src/` | React UI: `App.tsx` (views), `Player.tsx`, `Setup.tsx` (first-run download) |
+| `src-tauri/src/` | Rust backend: `ytdlp.rs` (download, search, progress), `library.rs`, `settings.rs`, `tools.rs` (tool download), `suggest.rs` |
+| `app-icon.svg` | Icon source. Regenerate the icon set with `pnpm tauri icon app-icon.svg` |
+
+## Built with
+
+[Tauri 2](https://tauri.app) · [React](https://react.dev) · [yt-dlp](https://github.com/yt-dlp/yt-dlp) · [FFmpeg](https://ffmpeg.org) ([yt-dlp builds](https://github.com/yt-dlp/FFmpeg-Builds)) · [Deno](https://deno.com) · [Tabler Icons](https://tabler.io/icons)
 
 ## Disclaimer
 
-Download only content you have the right to download. Respect YouTube's Terms of Service and the copyright of the creators. songvault is not affiliated with YouTube or Google.
+Download only content you have the right to download. Respect YouTube's Terms of Service and the creators' copyright. songvault is not affiliated with YouTube or Google.
 
 ## License
 
