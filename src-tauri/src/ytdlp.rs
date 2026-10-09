@@ -9,6 +9,7 @@ use std::{
 };
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+const RESULT_PRINT: &str = "SVJSON %(.{id,title,channel,uploader,duration})j";
 
 #[derive(Deserialize)]
 struct RawSong {
@@ -69,9 +70,40 @@ pub fn search_args(query: &str, count: u32) -> Vec<String> {
         "--playlist-end".into(),
         count.to_string(),
         "--print".into(),
-        "SVJSON %(.{id,title,channel,uploader,duration})j".into(),
+        RESULT_PRINT.into(),
         format!("https://www.youtube.com/results?search_query={encoded}"),
     ]
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+pub struct PlaylistInfo {
+    pub title: String,
+    pub entries: Vec<SearchResult>,
+}
+
+pub fn playlist_info(url: &str) -> Result<PlaylistInfo, String> {
+    let output = hidden("yt-dlp")
+        .args(playlist_args(url))
+        .output()
+        .map_err(|e| format!("could not start yt-dlp: {e}"))?;
+    let info = parse_playlist(&String::from_utf8_lossy(&output.stdout));
+    if info.entries.is_empty() {
+        return Err(last_error(&String::from_utf8_lossy(&output.stderr)));
+    }
+    Ok(info)
+}
+
+pub fn playlist_args(url: &str) -> Vec<String> {
+    ["--flat-playlist", "--print", "SVPL %(playlist_title)s", "--print", RESULT_PRINT, url].map(String::from).into()
+}
+
+/// yt-dlp prints the `SVPL` title line before every entry; the first one is enough.
+pub fn parse_playlist(stdout: &str) -> PlaylistInfo {
+    let title = stdout.lines().find_map(|l| l.trim().strip_prefix("SVPL ")).filter(|t| *t != "NA");
+    PlaylistInfo {
+        title: title.unwrap_or("Playlist").to_string(),
+        entries: stdout.lines().filter_map(|l| parse_result(l.trim())).collect(),
+    }
 }
 
 /// YouTube only offers separate video and audio streams, so previews are audio-only.
@@ -350,6 +382,23 @@ mod tests {
         let args = search_args("krycak 200", 50);
         assert_eq!(args[1..3], ["--playlist-end", "50"]);
         assert_eq!(args.last().unwrap(), "https://www.youtube.com/results?search_query=krycak+200");
+    }
+
+    #[test]
+    fn playlist_title_and_ordered_entries() {
+        let out = concat!(
+            "SVPL Road trip\n",
+            "SVJSON {\"id\": \"aaaaaaaaaaa\", \"title\": \"One\", \"channel\": \"A\", \"uploader\": \"A\", \"duration\": 120}\n",
+            "SVPL Road trip\n",
+            "SVJSON {\"id\": \"bbbbbbbbbbb\", \"title\": \"Two\", \"channel\": null, \"uploader\": \"B\", \"duration\": null}\r\n",
+            "WARNING: noise\n",
+        );
+        let info = parse_playlist(out);
+        assert_eq!(info.title, "Road trip");
+        let ids: Vec<_> = info.entries.iter().map(|e| (e.id.as_str(), e.channel.as_str(), e.duration)).collect();
+        assert_eq!(ids, [("aaaaaaaaaaa", "A", 120), ("bbbbbbbbbbb", "B", 0)]);
+        assert_eq!(parse_playlist("SVPL NA\n").title, "Playlist");
+        assert_eq!(playlist_args("U").last().unwrap(), "U");
     }
 
     #[test]

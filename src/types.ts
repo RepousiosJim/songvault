@@ -23,6 +23,11 @@ export interface SearchResult {
   duration: number;
 }
 
+export interface PlaylistInfo {
+  title: string;
+  entries: SearchResult[];
+}
+
 export interface Preview {
   id: string;
   title: string;
@@ -37,6 +42,9 @@ export interface Job {
   error?: string;
   log?: string;
   showLog?: boolean;
+  queued?: boolean;
+  title?: string;
+  into?: string;
 }
 
 export type Quality = "best" | "1080" | "720" | "480";

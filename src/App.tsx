@@ -25,8 +25,8 @@ import {
   IconVolume,
   IconX,
 } from "@tabler/icons-react";
-import type { Job, LibraryView, Playlist, Preview, Quality, SearchResult, Settings, Song } from "./types";
-import { artistOf, cleanTitle } from "./songs";
+import type { Job, LibraryView, Playlist, PlaylistInfo, Preview, Quality, SearchResult, Settings, Song } from "./types";
+import { artistOf, cleanTitle, parseYouTubeLink } from "./songs";
 import { formatDuration, isTyping, Player, type Track } from "./Player";
 import { Setup } from "./Setup";
 import "./App.css";
@@ -38,7 +38,8 @@ const SETTINGS = "settings";
 const watchUrl = (id: string) => `https://www.youtube.com/watch?v=${id}`;
 const thumbnailUrl = (id: string) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
 const artworkUrl = (id: string) => `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
-const isLink = (text: string) => /^https?:\/\/|youtu\.?be/i.test(text);
+const playlistUrl = (list: string) => `https://www.youtube.com/playlist?list=${list}`;
+const MAX_DOWNLOADS = 3;
 const isSong = (r: SearchResult) => r.duration > 0 && r.duration < 600;
 
 type SortKey = "added" | "title" | "artist" | "length";
@@ -99,6 +100,8 @@ function App() {
   const [installing, setInstalling] = useState(false);
   const [updateOutput, setUpdateOutput] = useState("");
   const [field, setField] = useState("");
+  const latest = useRef({ jobs: [] as Job[], songs: [] as Song[], playlists: [] as Playlist[] });
+  const importOrder = useRef<Record<string, string[]>>({});
   const [searchedFor, setSearchedFor] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [songsOnly, setSongsOnly] = useState(true);
@@ -116,10 +119,12 @@ function App() {
   const [moving, setMoving] = useState(false);
   const [dirError, setDirError] = useState("");
 
+  latest.current = { jobs, songs: allSongs, playlists };
+
   useEffect(() => {
     const q = field.trim();
     suggestFor.current = q;
-    if (!q || isLink(q) || q === searchedQuery.current) return setSuggestions([]);
+    if (!q || parseYouTubeLink(q) || q === searchedQuery.current) return setSuggestions([]);
     const timer = setTimeout(() => {
       invoke<string[]>("suggest", { query: q }).then((found) => {
         if (suggestFor.current === q) {
@@ -141,8 +146,10 @@ function App() {
         setJobs((js) => js.map((j) => (j.id === payload.jobId ? { ...j, percent: payload.percent } : j))),
       ),
       listen<{ jobId: string; song: Song }>("download-done", ({ payload }) => {
+        const into = latest.current.jobs.find((j) => j.id === payload.jobId)?.into;
         setJobs((js) => js.filter((j) => j.id !== payload.jobId));
-        setJustAdded((a) => [...a.filter((s) => s.id !== payload.song.id), payload.song]);
+        if (into) insertImported(into, payload.song.id);
+        else setJustAdded((a) => [...a.filter((s) => s.id !== payload.song.id), payload.song]);
         setAllSongs((ss) =>
           ss.some((s) => s.id === payload.song.id)
             ? ss.map((s) => (s.id === payload.song.id ? payload.song : s))
@@ -164,6 +171,14 @@ function App() {
       unlisten.then((fns) => fns.forEach((fn) => fn()));
     };
   }, []);
+
+  useEffect(() => {
+    const running = jobs.filter((j) => !j.queued && !j.error).length;
+    const next = jobs.filter((j) => j.queued).slice(0, MAX_DOWNLOADS - running);
+    if (!next.length) return;
+    setJobs((js) => js.map((j) => (next.some((n) => n.id === j.id) ? { ...j, queued: false } : j)));
+    next.forEach((j) => invoke("download", { jobId: j.id, url: j.url }));
+  }, [jobs]);
 
   useEffect(() => {
     setExpanded(false);
@@ -263,22 +278,50 @@ function App() {
   const failedJobs = jobs.filter((j) => j.error);
   const shownResults = songsOnly ? results.filter(isSong) : results;
 
-  function startDownload(target: string) {
-    const id = crypto.randomUUID();
-    setJobs((js) => [...js, { id, url: target, percent: 0 }]);
-    invoke("download", { jobId: id, url: target });
+  function startDownload(target: string, extra: Partial<Job> = {}) {
+    setJobs((js) => [...js, { id: crypto.randomUUID(), url: target, percent: 0, queued: true, ...extra }]);
   }
 
   function submitField(text = field) {
     const q = text.trim();
     if (!q) return;
-    if (isLink(q)) {
-      setField("");
-      setSuggestions([]);
-      startDownload(q);
-    } else {
-      runSearch(q);
-    }
+    const link = parseYouTubeLink(q);
+    if (!link) return runSearch(q);
+    setField("");
+    setSuggestions([]);
+    if (link.kind === "video") return startDownload(watchUrl(link.id));
+    const url = playlistUrl(link.list);
+    invoke<PlaylistInfo>("playlist_info", { url }).then(importPlaylist, (e) =>
+      setJobs((js) => [...js, { id: crypto.randomUUID(), url, percent: 0, error: String(e) }]),
+    );
+  }
+
+  function importPlaylist(info: PlaylistInfo) {
+    const id = crypto.randomUUID();
+    const order = [...new Set(info.entries.map((e) => e.id))];
+    importOrder.current[id] = order;
+    const have = new Set(latest.current.songs.map((s) => s.id));
+    savePlaylists([
+      ...latest.current.playlists,
+      { id, name: info.title, songIds: order.filter((songId) => have.has(songId)) },
+    ]);
+    info.entries
+      .filter((e) => !have.has(e.id))
+      .forEach((e) => startDownload(watchUrl(e.id), { into: id, title: e.title }));
+    setView(id);
+  }
+
+  function insertImported(playlistId: string, songId: string) {
+    const order = importOrder.current[playlistId];
+    savePlaylists(
+      latest.current.playlists.map((p) => {
+        if (p.id !== playlistId || p.songIds.includes(songId)) return p;
+        const at = p.songIds.findIndex((id) => order.indexOf(id) > order.indexOf(songId));
+        const songIds = [...p.songIds];
+        songIds.splice(at < 0 ? songIds.length : at, 0, songId);
+        return { ...p, songIds };
+      }),
+    );
   }
 
   async function runSearch(q: string) {
@@ -336,6 +379,7 @@ function App() {
   }
 
   function savePlaylists(next: Playlist[]) {
+    latest.current.playlists = next;
     setPlaylists(next);
     invoke("save_playlists", { playlists: next });
   }
@@ -573,7 +617,7 @@ function App() {
               <ul className="jobs">
                 {jobs.map((job) => (
                   <li key={job.id} className={job.error ? "failed" : undefined}>
-                    <span className="job-url">{job.url}</span>
+                    <span className="job-url">{job.title ?? job.url}</span>
                     {job.error ? (
                       <>
                         <span className="job-error">{job.error}</span>
@@ -595,8 +639,8 @@ function App() {
                       </>
                     ) : (
                       <>
-                        <progress value={job.percent} max={100} />
-                        <span className="job-percent">{Math.round(job.percent)}%</span>
+                        <progress value={job.queued ? 0 : job.percent} max={100} />
+                        <span className="job-percent">{job.queued ? "Queued" : `${Math.round(job.percent)}%`}</span>
                       </>
                     )}
                   </li>
@@ -858,7 +902,7 @@ function App() {
                               <IconCircleCheckFilled size={16} /> In library
                             </span>
                           ) : active ? (
-                            <span className="tag">{Math.round(active.percent)}%</span>
+                            <span className="tag">{active.queued ? "Queued" : `${Math.round(active.percent)}%`}</span>
                           ) : failed ? (
                             <button
                               className="icon"
