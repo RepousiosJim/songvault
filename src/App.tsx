@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import {
   IconBrandYoutube,
   IconChevronRight,
   IconCircleCheckFilled,
   IconDownload,
   IconExternalLink,
+  IconFileExport,
   IconFolder,
   IconMusic,
   IconPencil,
@@ -328,6 +329,14 @@ function App() {
     savePlaylists(playlists.map((p) => (p.id === id ? { ...p, name: name.trim() } : p)));
   }
 
+  async function exportPlaylist(p: Playlist) {
+    const path = await save({
+      defaultPath: `${dir}\\${p.name.replace(/[\\/:*?"<>|]/g, "_")}.m3u8`,
+      filters: [{ name: "Playlist", extensions: ["m3u8"] }],
+    });
+    if (path) invoke("export_m3u", { playlistId: p.id, path });
+  }
+
   function deletePlaylist(p: Playlist) {
     if (!window.confirm(`Delete playlist "${p.name}"?`)) return;
     savePlaylists(playlists.filter((x) => x.id !== p.id));
@@ -608,6 +617,9 @@ function App() {
                 <span className="row-tools">
                   <button className="icon" aria-label="Rename" onClick={() => setRenamingId(p.id)}>
                     <IconPencil size={14} />
+                  </button>
+                  <button className="icon" aria-label="Export M3U" onClick={() => exportPlaylist(p)}>
+                    <IconFileExport size={14} />
                   </button>
                   <button className="icon" aria-label="Delete playlist" onClick={() => deletePlaylist(p)}>
                     <IconTrash size={14} />

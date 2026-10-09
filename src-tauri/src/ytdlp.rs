@@ -221,7 +221,11 @@ pub fn download_args(settings: &Settings, url: &str) -> Vec<String> {
     args.extend(
         [
             "-o",
-            "%(id)s.%(ext)s",
+            "%(artist,uploader)s - %(title)s [%(id)s].%(ext)s",
+            "--embed-metadata",
+            "--embed-thumbnail",
+            "--convert-thumbnails",
+            "jpg",
             "--print",
             "before_dl:SVFMT %(format_id)s %(filesize,filesize_approx)s",
             "--print",
@@ -285,7 +289,7 @@ mod tests {
     const GREEK: &str = r#"SVJSON {"id": "abc123DEF45", "title": "\u039a\u03b1\u03bb\u03b7\u03bc\u03ad\u03c1\u03b1 \u03ba\u03cc\u03c3\u03bc\u03b5", "channel": null, "uploader": "\u0391\u03b8\u03ae\u03bd\u03b1", "duration": 212.4, "thumbnail": "https://i.ytimg.com/vi/abc123DEF45/hqdefault.jpg", "filepath": "E:\\Music\\songvault\\abc123DEF45.mp4"}"#;
 
     fn settings(quality: Quality, audio_only: bool) -> Settings {
-        Settings { library_dir: r"D:\lib".into(), quality, audio_only, search_count: 20 }
+        Settings { library_dir: r"D:\lib".into(), quality, audio_only, ..Settings::default() }
     }
 
     fn tail(quality: Quality, audio_only: bool) -> Vec<String> {
@@ -317,6 +321,14 @@ mod tests {
         let expected = ["-f", "ba[ext=m4a]/ba", "-x", "--audio-format", "m4a"];
         assert_eq!(tail(Quality::Best, true), expected);
         assert_eq!(tail(Quality::P480, true), expected);
+    }
+
+    #[test]
+    fn files_are_named_and_tagged() {
+        let args = download_args(&settings(Quality::Best, false), "URL");
+        let o = args.iter().position(|a| a == "-o").unwrap();
+        assert_eq!(args[o + 1], "%(artist,uploader)s - %(title)s [%(id)s].%(ext)s");
+        assert_eq!(args[o + 2..o + 6], ["--embed-metadata", "--embed-thumbnail", "--convert-thumbnails", "jpg"]);
     }
 
     #[test]

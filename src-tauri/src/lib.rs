@@ -234,6 +234,13 @@ fn save_playlists(state: State<AppState>, playlists: Vec<Playlist>) -> Result<()
     save(&state, &library)
 }
 
+#[tauri::command]
+fn export_m3u(state: State<AppState>, playlist_id: String, path: String) -> Result<(), String> {
+    let library = state.library.lock().unwrap();
+    let playlist = library.playlists.iter().find(|p| p.id == playlist_id).ok_or("playlist not found")?;
+    fs::write(path, library.m3u(playlist, &state.dir())).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -260,6 +267,7 @@ pub fn run() {
             reveal_song,
             open_youtube,
             save_playlists,
+            export_m3u,
             tools_ready,
             install_tools,
             ytdlp_version,

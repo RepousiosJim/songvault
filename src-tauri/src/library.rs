@@ -45,6 +45,16 @@ impl Library {
         fs::write(&tmp, serde_json::to_vec_pretty(self)?)?;
         fs::rename(tmp, dir.join(FILE_NAME))
     }
+
+    /// An extended M3U listing of the playlist's songs, in order, with absolute paths.
+    pub fn m3u(&self, playlist: &Playlist, dir: &Path) -> String {
+        let mut out = String::from("#EXTM3U\n");
+        for song in playlist.song_ids.iter().filter_map(|id| self.songs.iter().find(|s| s.id == *id)) {
+            let artist = song.artist.as_deref().unwrap_or(&song.channel);
+            out += &format!("#EXTINF:{},{artist} - {}\n{}\n", song.duration, song.title, dir.join(&song.file).display());
+        }
+        out
+    }
 }
 
 fn move_file(from: &Path, to: &Path) -> io::Result<()> {
@@ -115,6 +125,21 @@ mod tests {
         let json = r#"{"songs":[{"id":"a","title":"A","channel":"C","duration":1,"file":"a.mp4","thumbnail":"","addedAt":0}],"playlists":[]}"#;
         let library: Library = serde_json::from_str(json).unwrap();
         assert_eq!(library.songs[0].artist, None);
+    }
+
+    #[test]
+    fn m3u_follows_playlist_order() {
+        let mut a = song("a", "a.mp4");
+        a.channel = "Chan".into();
+        let mut b = song("b", "b.m4a");
+        b.artist = Some("Artist".into());
+        b.title = "Bé".into();
+        let library = Library { songs: vec![a, b], playlists: vec![] };
+        let playlist = Playlist { id: "q".into(), name: "Q".into(), song_ids: vec!["b".into(), "gone".into(), "a".into()] };
+        assert_eq!(
+            library.m3u(&playlist, Path::new(r"D:\lib")),
+            "#EXTM3U\n#EXTINF:1,Artist - Bé\nD:\\lib\\b.m4a\n#EXTINF:1,Chan - a\nD:\\lib\\a.mp4\n"
+        );
     }
 
     #[test]
