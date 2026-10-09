@@ -69,11 +69,13 @@ fn save_settings(
     quality: Quality,
     audio_only: bool,
     search_count: u32,
+    cut_non_music: bool,
 ) -> Result<(), String> {
     let mut settings = state.settings.lock().unwrap();
     settings.quality = quality;
     settings.audio_only = audio_only;
     settings.search_count = search_count;
+    settings.cut_non_music = cut_non_music;
     settings.save(&state.config_path).map_err(|e| e.to_string())
 }
 

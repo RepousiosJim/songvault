@@ -192,11 +192,16 @@ function App() {
     setPlaylists(lib.playlists);
   }
 
-  function updateSettings(patch: Partial<Pick<Settings, "quality" | "audioOnly" | "searchCount">>) {
+  function updateSettings(patch: Partial<Pick<Settings, "quality" | "audioOnly" | "searchCount" | "cutNonMusic">>) {
     if (!settings) return;
     const next = { ...settings, ...patch };
     setSettings(next);
-    invoke("save_settings", { quality: next.quality, audioOnly: next.audioOnly, searchCount: next.searchCount });
+    invoke("save_settings", {
+      quality: next.quality,
+      audioOnly: next.audioOnly,
+      searchCount: next.searchCount,
+      cutNonMusic: next.cutNonMusic,
+    });
   }
 
   async function pickFolder() {
@@ -679,6 +684,14 @@ function App() {
                   type="checkbox"
                   checked={settings.audioOnly}
                   onChange={(e) => updateSettings({ audioOnly: e.target.checked })}
+                />
+              </label>
+              <label className="setting">
+                <span>Cut non-music parts</span>
+                <input
+                  type="checkbox"
+                  checked={settings.cutNonMusic}
+                  onChange={(e) => updateSettings({ cutNonMusic: e.target.checked })}
                 />
               </label>
               <label className="setting">

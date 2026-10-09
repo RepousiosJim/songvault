@@ -45,6 +45,7 @@ export interface Settings {
   quality: Quality;
   audioOnly: boolean;
   searchCount: number;
+  cutNonMusic: boolean;
 }
 
 export interface LibraryView {

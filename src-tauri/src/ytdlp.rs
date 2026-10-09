@@ -233,6 +233,9 @@ pub fn download_args(settings: &Settings, url: &str) -> Vec<String> {
         ]
         .map(String::from),
     );
+    if settings.cut_non_music {
+        args.extend(["--sponsorblock-remove", "music_offtopic"].map(String::from));
+    }
     args.push(url.to_string());
     args
 }
@@ -329,6 +332,16 @@ mod tests {
         let o = args.iter().position(|a| a == "-o").unwrap();
         assert_eq!(args[o + 1], "%(artist,uploader)s - %(title)s [%(id)s].%(ext)s");
         assert_eq!(args[o + 2..o + 6], ["--embed-metadata", "--embed-thumbnail", "--convert-thumbnails", "jpg"]);
+    }
+
+    #[test]
+    fn non_music_parts_are_cut_only_when_enabled() {
+        let mut s = settings(Quality::Best, false);
+        let args = download_args(&s, "URL");
+        let p = args.iter().position(|a| a == "--sponsorblock-remove").unwrap();
+        assert_eq!(args[p + 1], "music_offtopic");
+        s.cut_non_music = false;
+        assert!(!download_args(&s, "URL").contains(&"--sponsorblock-remove".to_string()));
     }
 
     #[test]
